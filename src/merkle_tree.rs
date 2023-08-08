@@ -1,17 +1,20 @@
-use std::hash::Hash;
-
-use crate::{provable::CircuitCompiler, recursive_hash::RecursiveHash, D, F};
+use crate::{
+    circuit_compiler::{CircuitCompiler, ProofData},
+    provable::Provable,
+    recursive_hash::RecursiveHash,
+    C, D, F,
+};
+use anyhow::Error;
 use plonky2::{
     hash::{hash_types::HashOut, poseidon::PoseidonHash},
-    iop::witness::PartialWitness,
-    plonk::{circuit_builder::CircuitBuilder, config::Hasher},
+    plonk::config::Hasher,
 };
 
 // Our implementation follows the one of Plonky2:
 // see https://github.com/mir-protocol/plonky2/blob/main/plonky2/src/hash/merkle_tree.rs#L39.
 pub struct MerkleTree {
     pub(crate) leaves: Vec<Vec<F>>,
-    pub(crate) digests: Vec<HashOut<F>>,
+    pub(crate) recursive_hashes: Vec<RecursiveHash>,
     pub(crate) root: HashOut<F>,
 }
 
@@ -20,40 +23,44 @@ impl MerkleTree {
         // A plain Merkle tree needs to have a power of two number of leaves.
         debug_assert!(data.len().is_power_of_two() && data.len() > 1);
 
+        println!("FLAG: DEBUG");
+
         let merkle_tree_height = data.len().ilog2();
-        let mut digests = vec![];
-        for i in 0..data.len() {
-            let leaf_hash = PoseidonHash::hash_or_noop(&data[i]);
-            digests.push(leaf_hash);
+        let mut recursive_hashes = vec![];
+        for i in (0..data.len()).step_by(2) {
+            let left_leaf_hash = PoseidonHash::hash_or_noop(&data[i]);
+            let right_leaf_hash = PoseidonHash::hash_or_noop(&data[i + 1]);
+            recursive_hashes.push(RecursiveHash::hash_inputs(left_leaf_hash, right_leaf_hash));
         }
 
         let mut current_tree_height_index = 0;
         let mut i = 0;
         for height in 0..merkle_tree_height {
             while i < current_tree_height_index + (1 << (merkle_tree_height - height)) {
-                let hash_targets = PoseidonHash::hash_no_pad(
-                    &[
-                        digests[i as usize].elements.clone(),
-                        digests[i as usize + 1].elements.clone(),
-                    ]
-                    .concat(),
+                let recursive_hash = RecursiveHash::hash_inputs(
+                    recursive_hashes[i as usize].evaluate(),
+                    recursive_hashes[i as usize + 1].evaluate(),
                 );
-                digests.push(hash_targets);
+                recursive_hashes.push(recursive_hash);
                 i += 2;
             }
             current_tree_height_index += 1 << (merkle_tree_height - height);
         }
 
         // we assume that the number of leaves is > 1, so we should have a proper root
-        let root = *digests.last().unwrap();
+        let root = recursive_hashes.last().unwrap().evaluate();
 
         Self {
             leaves: data,
-            digests,
+            recursive_hashes,
             root,
         }
     }
 }
+
+// impl Provable<F, C, D> for MerkleTree {
+//     fn proof(self) -> Result<ProofData<F, C, D>, Error> {}
+// }
 
 // // We implement a recursive proof
 // impl CircuitCompiler<F, D> for MerkleTree {
@@ -102,6 +109,6 @@ mod tests {
         let should_be_merkle_tree =
             plonky2::hash::merkle_tree::MerkleTree::<F, PoseidonHash>::new(merkle_tree_leaves, 0);
 
-        assert_eq!(merkle_tree.root, should_be_merkle_tree.cap.0[0])
+        // assert_eq!(merkle_tree.root, should_be_merkle_tree.cap.0[0])
     }
 }

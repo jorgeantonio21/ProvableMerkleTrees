@@ -1,5 +1,6 @@
 use plonky2::{field::goldilocks_field::GoldilocksField, plonk::config::PoseidonGoldilocksConfig};
 
+pub mod circuit_compiler;
 pub mod merkle_tree;
 pub mod provable;
 pub mod recursive_hash;

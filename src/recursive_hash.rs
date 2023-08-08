@@ -10,7 +10,8 @@ use plonky2::{
 };
 
 use crate::{
-    provable::{CircuitCompiler, ProofData, Provable},
+    circuit_compiler::{CircuitCompiler, ProofData},
+    provable::Provable,
     C, D, F,
 };
 
