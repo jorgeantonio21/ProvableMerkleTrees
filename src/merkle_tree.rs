@@ -132,13 +132,7 @@ impl Provable<F, C, D> for MerkleTree {
                     right_child_root_hash_targets,
                     self.recursive_hashes[i + 1].evaluate(),
                 );
-                println!(
-                    "FLAG: DEBUG height = {}, i / 2 = {}, current_tree_height_index + i / 2 = {}, current_tree_height_index + (1 << (merkle_tree_height - height)) = {}",
-                    height,
-                    i / 2,
-                    current_tree_height_index + i / 2,
-                    current_tree_height_index + (1 << (merkle_tree_height - height))
-                );
+
                 partial_witness.set_hash_target(
                     left_child_hash_targets,
                     self.recursive_hashes
