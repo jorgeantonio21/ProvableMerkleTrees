@@ -108,11 +108,11 @@ impl Provable<F, C, D> for MerkleTree {
 
         // Finally, we need to link each consecutive pair of `RecursiveHash` roots
         // with the leaves of its parent `RecursiveHash`
-        let merkle_tree_height = self.leaves.len().ilog2() as usize;
-        let mut current_tree_height_index = 0;
+        let merkle_tree_height = self.leaves.len().ilog2() as usize - 1;
+        let mut current_tree_height_index = 1 << (merkle_tree_height - 1);
         let mut i = 0;
-        for height in 1..merkle_tree_height {
-            while i < current_tree_height_index + (1 << (merkle_tree_height - height)) {
+        for height in 1..(merkle_tree_height - 1) {
+            while i < current_tree_height_index + (1 << (merkle_tree_height - height - 1)) {
                 let left_child_root_hash_targets = circuit_builder.add_virtual_hash();
                 let right_child_root_hash_targets = circuit_builder.add_virtual_hash();
 
@@ -132,14 +132,24 @@ impl Provable<F, C, D> for MerkleTree {
                     right_child_root_hash_targets,
                     self.recursive_hashes[i + 1].evaluate(),
                 );
-
+                println!(
+                    "FLAG: DEBUG height = {}, i / 2 = {}, current_tree_height_index + i / 2 = {}, current_tree_height_index + (1 << (merkle_tree_height - height)) = {}",
+                    height,
+                    i / 2,
+                    current_tree_height_index + i / 2,
+                    current_tree_height_index + (1 << (merkle_tree_height - height))
+                );
                 partial_witness.set_hash_target(
                     left_child_hash_targets,
-                    self.recursive_hashes[i + (1 << (merkle_tree_height - height))].left_hash,
+                    self.recursive_hashes
+                        [i / (1 << (merkle_tree_height - height)) + current_tree_height_index]
+                        .left_hash,
                 );
                 partial_witness.set_hash_target(
                     right_child_hash_targets,
-                    self.recursive_hashes[i + (1 << (merkle_tree_height - height))].right_hash,
+                    self.recursive_hashes
+                        [i / (1 << (merkle_tree_height - height)) + current_tree_height_index]
+                        .right_hash,
                 );
 
                 i += 2;
@@ -229,5 +239,60 @@ mod tests {
             &[F::from_canonical_u64(256)],
         );
         assert!(merkle_tree.prove_and_verify().is_err());
+    }
+
+    #[test]
+    fn test_bigger_merkle_tree() {
+        let f_one: F = F::ONE;
+        let f_two: F = F::from_canonical_u64(2);
+        let f_three: F = F::from_canonical_u64(3);
+        let f_four: F = F::from_canonical_u64(4);
+        let f_five: F = F::from_canonical_u64(5);
+        let f_six: F = F::from_canonical_u64(6);
+        let f_seven: F = F::from_canonical_u64(7);
+        let f_eight: F = F::from_canonical_u64(8);
+
+        let merkle_tree_leaves = vec![
+            vec![f_one],
+            vec![f_two],
+            vec![f_three],
+            vec![f_four],
+            vec![f_five],
+            vec![f_six],
+            vec![f_seven],
+            vec![f_eight],
+        ];
+
+        let merkle_tree = MerkleTree::create(merkle_tree_leaves.clone());
+        let should_be_merkle_tree =
+            plonky2::hash::merkle_tree::MerkleTree::<F, PoseidonHash>::new(merkle_tree_leaves, 0);
+
+        assert_eq!(merkle_tree.root, should_be_merkle_tree.cap.0[0])
+    }
+
+    #[test]
+    fn test_bigger_merkle_tree_proof_generation() {
+        let f_one: F = F::ONE;
+        let f_two: F = F::from_canonical_u64(2);
+        let f_three: F = F::from_canonical_u64(3);
+        let f_four: F = F::from_canonical_u64(4);
+        let f_five: F = F::from_canonical_u64(5);
+        let f_six: F = F::from_canonical_u64(6);
+        let f_seven: F = F::from_canonical_u64(7);
+        let f_eight: F = F::from_canonical_u64(8);
+
+        let merkle_tree_leaves = vec![
+            vec![f_one],
+            vec![f_two],
+            vec![f_three],
+            vec![f_four],
+            vec![f_five],
+            vec![f_six],
+            vec![f_seven],
+            vec![f_eight],
+        ];
+
+        let merkle_tree = MerkleTree::create(merkle_tree_leaves.clone());
+        assert!(merkle_tree.prove_and_verify().is_ok());
     }
 }
