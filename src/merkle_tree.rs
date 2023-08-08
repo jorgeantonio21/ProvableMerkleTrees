@@ -11,7 +11,7 @@ use plonky2::{
     plonk::{circuit_builder::CircuitBuilder, circuit_data::CircuitConfig, config::Hasher},
 };
 
-// Our implementation follows the one of Plonky2:
+// Our implementation is inspired by the one of Plonky2:
 // see https://github.com/mir-protocol/plonky2/blob/main/plonky2/src/hash/merkle_tree.rs#L39.
 pub struct MerkleTree {
     pub(crate) leaves: Vec<Vec<F>>,
@@ -28,8 +28,8 @@ impl MerkleTree {
         let mut recursive_hashes = vec![];
 
         for i in (0..data.len()).step_by(2) {
-            let left_leaf_hash = PoseidonHash::hash_no_pad(&data[i]);
-            let right_leaf_hash = PoseidonHash::hash_no_pad(&data[i + 1]);
+            let left_leaf_hash = PoseidonHash::hash_or_noop(&data[i]);
+            let right_leaf_hash = PoseidonHash::hash_or_noop(&data[i + 1]);
             recursive_hashes.push(RecursiveHash::hash_inputs(left_leaf_hash, right_leaf_hash));
         }
 
@@ -74,9 +74,9 @@ impl Provable<F, C, D> for MerkleTree {
             let right_data_targets = circuit_builder.add_virtual_targets(right_data.len());
 
             let left_hash_targets =
-                circuit_builder.hash_n_to_hash_no_pad::<PoseidonHash>(left_data_targets.clone());
+                circuit_builder.hash_or_noop::<PoseidonHash>(left_data_targets.clone());
             let right_hash_targets =
-                circuit_builder.hash_n_to_hash_no_pad::<PoseidonHash>(right_data_targets.clone());
+                circuit_builder.hash_or_noop::<PoseidonHash>(right_data_targets.clone());
 
             let should_be_left_hash_targets = circuit_builder.add_virtual_hash();
             let should_be_right_hash_targets = circuit_builder.add_virtual_hash();
@@ -93,6 +93,18 @@ impl Provable<F, C, D> for MerkleTree {
             partial_witness
                 .set_hash_target(should_be_right_hash_targets, recursive_hash.right_hash);
         }
+
+        // We check that the `MerkleTree` root is well defined
+        let tree_root_hash_targets = circuit_builder.add_virtual_hash();
+        let should_be_tree_root_hash_targets = circuit_builder.add_virtual_hash();
+
+        circuit_builder.connect_hashes(tree_root_hash_targets, should_be_tree_root_hash_targets);
+
+        partial_witness.set_hash_target(
+            tree_root_hash_targets,
+            self.recursive_hashes.last().unwrap().evaluate(),
+        );
+        partial_witness.set_hash_target(should_be_tree_root_hash_targets, self.root);
 
         // Finally, we need to link each consecutive pair of `RecursiveHash` roots
         // with the leaves of its parent `RecursiveHash`
@@ -170,7 +182,7 @@ mod tests {
     use super::*;
 
     #[test]
-    // Compares a
+    // Compares our `MerkleTree` implementation with that of Plonky2
     fn test_merkle_tree() {
         let f_one: F = F::ONE;
         let f_two: F = F::from_canonical_u64(2);
@@ -187,6 +199,7 @@ mod tests {
     }
 
     #[test]
+    // Tests that the proof and verification of a `MerkleTree` instance passes
     fn test_merkle_tree_generate_proof() {
         let f_one: F = F::ONE;
         let f_two: F = F::from_canonical_u64(2);
@@ -201,6 +214,7 @@ mod tests {
 
     #[test]
     #[should_panic]
+    // Tests that the proof and verification of a ill formed `MerkleTree` instance panics
     fn test_proof_generation_fails_for_invalid_recursive_hashes() {
         let f_one: F = F::ONE;
         let f_two: F = F::from_canonical_u64(2);
