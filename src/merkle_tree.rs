@@ -55,31 +55,32 @@ impl MerkleTree {
     }
 }
 
-// We implement a recursive proof
-impl CircuitCompiler<F, D> for MerkleTree {
-    type Value = HashOut<F>;
-    type Targets = Vec<HashOut<F>>;
-    type OutTargets = HashOut<F>;
+// // We implement a recursive proof
+// impl CircuitCompiler<F, D> for MerkleTree {
+//     type Value = HashOut<F>;
+//     type Targets = Vec<HashOut<F>>;
+//     type OutTargets = HashOut<F>;
 
-    fn evaluate(&self) -> Self::Value {
-        self.root.clone()
-    }
+//     fn evaluate(&self) -> Self::Value {
+//         self.root.clone()
+//     }
 
-    fn compile(
-        &self,
-        circuit_builder: &mut CircuitBuilder<F, D>,
-    ) -> (Self::Targets, Self::OutTargets) {
-    }
+//     fn compile(
+//         &self,
+//         circuit_builder: &mut CircuitBuilder<F, D>,
+//     ) -> (Self::Targets, Self::OutTargets) {
 
-    fn fill(
-        &self,
-        partial_witness: &mut PartialWitness<F>,
-        targets: Self::Targets,
-        out_targets: Self::OutTargets,
-    ) -> Result<(), anyhow::Error> {
-        Ok(())
-    }
-}
+//     }
+
+//     fn fill(
+//         &self,
+//         partial_witness: &mut PartialWitness<F>,
+//         targets: Self::Targets,
+//         out_targets: Self::OutTargets,
+//     ) -> Result<(), anyhow::Error> {
+//         Ok(())
+//     }
+// }
 
 #[cfg(test)]
 mod tests {

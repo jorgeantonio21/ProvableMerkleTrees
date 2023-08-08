@@ -4,9 +4,7 @@ use plonky2::{
     hash::hash_types::RichField,
     iop::witness::PartialWitness,
     plonk::{
-        circuit_builder::CircuitBuilder,
-        circuit_data::{CommonCircuitData, VerifierOnlyCircuitData},
-        config::GenericConfig,
+        circuit_builder::CircuitBuilder, circuit_data::CircuitData, config::GenericConfig,
         proof::ProofWithPublicInputs,
     },
 };
@@ -16,8 +14,7 @@ where
     F: RichField + Extendable<D>,
 {
     pub(crate) proof_with_pis: ProofWithPublicInputs<F, C, D>,
-    pub(crate) common: CommonCircuitData<F, D>,
-    pub(crate) verifier_only: VerifierOnlyCircuitData<C, D>,
+    pub(crate) circuit_data: CircuitData<F, C, D>,
 }
 
 pub trait CircuitCompiler<F: RichField + Extendable<D>, const D: usize> {
@@ -40,10 +37,12 @@ pub trait CircuitCompiler<F: RichField + Extendable<D>, const D: usize> {
 
 pub trait Provable<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>:
     CircuitCompiler<F, D>
+where
+    Self: Sized,
 {
-    fn proof(
-        &self,
-        circuit_builder: CircuitBuilder<F, D>,
-        partial_witness: PartialWitness<F>,
-    ) -> Result<ProofData<F, C, D>, Error>;
+    fn proof(self) -> Result<ProofData<F, C, D>, Error>;
+    fn prove_and_verify(self) -> Result<(), Error> {
+        let proof_data = self.proof()?;
+        proof_data.circuit_data.verify(proof_data.proof_with_pis)
+    }
 }

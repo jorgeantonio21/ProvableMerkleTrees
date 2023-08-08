@@ -6,7 +6,7 @@ use plonky2::{
     },
     iop::witness::PartialWitness,
     iop::witness::WitnessWrite,
-    plonk::{circuit_builder::CircuitBuilder, config::Hasher},
+    plonk::{circuit_builder::CircuitBuilder, circuit_data::CircuitConfig, config::Hasher},
 };
 
 use crate::{
@@ -21,6 +21,12 @@ pub(crate) struct RecursiveHash {
 }
 
 impl RecursiveHash {
+    pub fn new_from_data(left_data: &[F], right_data: &[F]) -> Self {
+        let left_hash = PoseidonHash::hash_no_pad(left_data);
+        let right_hash = PoseidonHash::hash_no_pad(right_data);
+        Self::hash_inputs(left_hash, right_hash)
+    }
+
     pub fn hash_inputs(left_hash: HashOut<F>, right_hash: HashOut<F>) -> Self {
         let parent_hash =
             PoseidonHash::hash_no_pad(&[left_hash.elements, right_hash.elements].concat());
@@ -83,11 +89,11 @@ impl CircuitCompiler<F, D> for RecursiveHash {
 }
 
 impl Provable<F, C, D> for RecursiveHash {
-    fn proof(
-        &self,
-        mut circuit_builder: CircuitBuilder<F, D>,
-        mut partial_witness: PartialWitness<F>,
-    ) -> Result<ProofData<F, C, D>, Error> {
+    fn proof(self) -> Result<ProofData<F, C, D>, Error> {
+        let config = CircuitConfig::standard_recursion_config();
+        let mut circuit_builder = CircuitBuilder::new(config);
+        let mut partial_witness = PartialWitness::new();
+
         let (targets, out_targets) = self.compile(&mut circuit_builder);
         self.fill(&mut partial_witness, targets, out_targets)?;
 
@@ -96,8 +102,23 @@ impl Provable<F, C, D> for RecursiveHash {
 
         Ok(ProofData {
             proof_with_pis,
-            common: circuit_data.common,
-            verifier_only: circuit_data.verifier_only,
+            circuit_data,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use plonky2::field::types::Field;
+
+    use super::*;
+
+    #[test]
+    fn test_recursive_hash() {
+        let f_0 = F::ZERO;
+        let f_1 = F::ONE;
+
+        let recursive_hash = RecursiveHash::new_from_data(&[f_0], &[f_1]);
+        assert!(recursive_hash.prove_and_verify().is_ok());
     }
 }
