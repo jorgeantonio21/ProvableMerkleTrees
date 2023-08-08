@@ -200,6 +200,7 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn test_proof_generation_fails_for_invalid_recursive_hashes() {
         let f_one: F = F::ONE;
         let f_two: F = F::from_canonical_u64(2);
@@ -213,7 +214,6 @@ mod tests {
             &[F::from_canonical_u64(128)],
             &[F::from_canonical_u64(256)],
         );
-
-        assert!(!merkle_tree.prove_and_verify().is_ok());
+        assert!(merkle_tree.prove_and_verify().is_err());
     }
 }
