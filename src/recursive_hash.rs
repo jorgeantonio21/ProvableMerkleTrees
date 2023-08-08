@@ -15,6 +15,7 @@ use crate::{
     C, D, F,
 };
 
+#[derive(Clone, Debug)]
 pub(crate) struct RecursiveHash {
     pub(crate) left_hash: HashOut<F>,
     pub(crate) right_hash: HashOut<F>,
