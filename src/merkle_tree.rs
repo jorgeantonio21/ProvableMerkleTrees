@@ -109,10 +109,11 @@ impl Provable<F, C, D> for MerkleTree {
         // Finally, we need to link each consecutive pair of `RecursiveHash` roots
         // with the leaves of its parent `RecursiveHash`
         let merkle_tree_height = self.leaves.len().ilog2() as usize - 1;
-        let mut current_tree_height_index = 1 << (merkle_tree_height - 1);
+        let mut current_tree_height_index = 0;
         let mut i = 0;
+        let mut j = 1 << merkle_tree_height;
         for height in 1..(merkle_tree_height - 1) {
-            while i < current_tree_height_index + (1 << (merkle_tree_height - height - 1)) {
+            while i < current_tree_height_index + (1 << (merkle_tree_height - height)) {
                 let left_child_root_hash_targets = circuit_builder.add_virtual_hash();
                 let right_child_root_hash_targets = circuit_builder.add_virtual_hash();
 
@@ -133,20 +134,15 @@ impl Provable<F, C, D> for MerkleTree {
                     self.recursive_hashes[i + 1].evaluate(),
                 );
 
-                partial_witness.set_hash_target(
-                    left_child_hash_targets,
-                    self.recursive_hashes
-                        [i / (1 << (merkle_tree_height - height)) + current_tree_height_index]
-                        .left_hash,
-                );
+                partial_witness
+                    .set_hash_target(left_child_hash_targets, self.recursive_hashes[j].left_hash);
                 partial_witness.set_hash_target(
                     right_child_hash_targets,
-                    self.recursive_hashes
-                        [i / (1 << (merkle_tree_height - height)) + current_tree_height_index]
-                        .right_hash,
+                    self.recursive_hashes[j].right_hash,
                 );
 
                 i += 2;
+                j += 1;
             }
             current_tree_height_index += 1 << (merkle_tree_height - height);
         }
@@ -276,6 +272,62 @@ mod tests {
         let f_eight: F = F::from_canonical_u64(8);
 
         let merkle_tree_leaves = vec![
+            vec![f_one],
+            vec![f_two],
+            vec![f_three],
+            vec![f_four],
+            vec![f_five],
+            vec![f_six],
+            vec![f_seven],
+            vec![f_eight],
+            vec![f_one],
+            vec![f_two],
+            vec![f_three],
+            vec![f_four],
+            vec![f_five],
+            vec![f_six],
+            vec![f_seven],
+            vec![f_eight],
+            vec![f_one],
+            vec![f_two],
+            vec![f_three],
+            vec![f_four],
+            vec![f_five],
+            vec![f_six],
+            vec![f_seven],
+            vec![f_eight],
+            vec![f_one],
+            vec![f_two],
+            vec![f_three],
+            vec![f_four],
+            vec![f_five],
+            vec![f_six],
+            vec![f_seven],
+            vec![f_eight],
+            vec![f_one],
+            vec![f_two],
+            vec![f_three],
+            vec![f_four],
+            vec![f_five],
+            vec![f_six],
+            vec![f_seven],
+            vec![f_eight],
+            vec![f_one],
+            vec![f_two],
+            vec![f_three],
+            vec![f_four],
+            vec![f_five],
+            vec![f_six],
+            vec![f_seven],
+            vec![f_eight],
+            vec![f_one],
+            vec![f_two],
+            vec![f_three],
+            vec![f_four],
+            vec![f_five],
+            vec![f_six],
+            vec![f_seven],
+            vec![f_eight],
             vec![f_one],
             vec![f_two],
             vec![f_three],
