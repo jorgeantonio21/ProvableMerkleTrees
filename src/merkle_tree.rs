@@ -1,5 +1,5 @@
 use crate::{
-    circuit_compiler::ProofData, provable::Provable, recursive_hash::RecursiveHash, C, D, F,
+    circuit_compiler::ProofData, pairwise_hash::PairwiseHash, provable::Provable, C, D, F,
 };
 use anyhow::Error;
 use plonky2::{
@@ -91,10 +91,10 @@ impl Provable<F, C, D> for MerkleTree {
         partial_witness.set_hash_target(tree_root_hash_targets, *self.digests.last().unwrap());
         partial_witness.set_hash_target(should_be_tree_root_hash_targets, self.root);
 
-        // From each two consecutive pair of digests, we generate a `RecursiveHash`
+        // From each two consecutive pair of digests, we generate a `PairwiseHash`
         // that we later use for proof generation and verification
         let merkle_tree_height = self.leaves.len().ilog2() as usize;
-        let mut recursive_hashes = vec![];
+        let mut pairwise_hashes = vec![];
         let mut current_tree_height_index = 0;
         let mut current_child_hash_index = 0;
         let mut parent_hash_index = 1 << merkle_tree_height;
@@ -102,12 +102,12 @@ impl Provable<F, C, D> for MerkleTree {
             while current_child_hash_index
                 < current_tree_height_index + (1 << (merkle_tree_height - height))
             {
-                let recursive_hash = RecursiveHash::new(
+                let pairwise_hash = PairwiseHash::new(
                     self.digests[current_child_hash_index],
                     self.digests[current_child_hash_index + 1],
                     self.digests[parent_hash_index],
                 );
-                recursive_hashes.push(recursive_hash);
+                pairwise_hashes.push(pairwise_hash);
                 current_child_hash_index += 2;
                 parent_hash_index += 1;
             }
@@ -116,9 +116,9 @@ impl Provable<F, C, D> for MerkleTree {
 
         // Recursive proof verification of the
         // NOTE: we can parallelize the process of generating the recursive proofs for each
-        // [`RecursiveHash`]
-        for recursive_hash in recursive_hashes {
-            let proof_data = recursive_hash.proof()?;
+        // [`PairwiseHash`]
+        for pairwise_hash in pairwise_hashes {
+            let proof_data = pairwise_hash.proof()?;
             let proof_with_pis_target =
                 circuit_builder.add_virtual_proof_with_pis(&proof_data.circuit_data.common);
             let verified_data_target = circuit_builder.add_virtual_verifier_data(
@@ -182,7 +182,7 @@ mod tests {
     #[test]
     #[should_panic]
     // Tests that the proof and verification of a ill formed `MerkleTree` instance panics
-    fn test_proof_generation_fails_for_invalid_recursive_hashes() {
+    fn test_proof_generation_fails_for_invalid_pairwise_hashes() {
         let f_one: F = F::ONE;
         let f_two: F = F::from_canonical_u64(2);
         let f_three: F = F::from_canonical_u64(3);

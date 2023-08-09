@@ -2,8 +2,8 @@ use plonky2::{field::goldilocks_field::GoldilocksField, plonk::config::PoseidonG
 
 pub mod circuit_compiler;
 pub mod merkle_tree;
+pub mod pairwise_hash;
 pub mod provable;
-pub mod recursive_hash;
 
 pub const D: usize = 2;
 pub type F = GoldilocksField;

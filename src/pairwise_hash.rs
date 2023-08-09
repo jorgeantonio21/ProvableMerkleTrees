@@ -16,13 +16,13 @@ use crate::{
 };
 
 #[derive(Clone, Debug)]
-pub(crate) struct RecursiveHash {
+pub(crate) struct PairwiseHash {
     pub(crate) left_hash: HashOut<F>,
     pub(crate) right_hash: HashOut<F>,
     pub(crate) parent_hash: HashOut<F>,
 }
 
-impl RecursiveHash {
+impl PairwiseHash {
     pub fn new(left_hash: HashOut<F>, right_hash: HashOut<F>, parent_hash: HashOut<F>) -> Self {
         Self {
             left_hash,
@@ -50,7 +50,7 @@ impl RecursiveHash {
     }
 }
 
-impl CircuitCompiler<F, D> for RecursiveHash {
+impl CircuitCompiler<F, D> for PairwiseHash {
     type Value = HashOut<F>;
     type Targets = [HashOutTarget; 2];
     type OutTargets = HashOutTarget;
@@ -100,7 +100,7 @@ impl CircuitCompiler<F, D> for RecursiveHash {
     }
 }
 
-impl Provable<F, C, D> for RecursiveHash {
+impl Provable<F, C, D> for PairwiseHash {
     fn proof(self) -> Result<ProofData<F, C, D>, Error> {
         let config = CircuitConfig::standard_recursion_config();
         let mut circuit_builder = CircuitBuilder::new(config);
@@ -126,11 +126,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_recursive_hash() {
+    fn test_pairwise_hash() {
         let f_0 = F::ZERO;
         let f_1 = F::ONE;
 
-        let recursive_hash = RecursiveHash::new_from_data(&[f_0], &[f_1]);
-        assert!(recursive_hash.prove_and_verify().is_ok());
+        let pairwise_hash = PairwiseHash::new_from_data(&[f_0], &[f_1]);
+        assert!(pairwise_hash.prove_and_verify().is_ok());
     }
 }

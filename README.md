@@ -14,8 +14,8 @@ We use Plonky2 as our proof system, as we rely heavily on recursion to generate 
 This has the advantage to abstract away the creation and use of circuits and witnesses. Leaving the user, with simple to use methods
 to generate/verify proofs.
 3. We make auxiliary use of a `CircuitCompiler` interface, that allows to evaluate a type (think of the evaluation of a `MerkleTree` to be its root), compile its value to a circuit and to fill the circuit targets with the corresponding type values.
-4. We use a structure `RecursiveHash` to encapsulate the logic of a parent hash generated from a pair of left and right child hashes.
-5. The `RecursiveHash` struct also implements the `Provable` (and `CircuitCompiler`) interface, which then is used to recursively
+4. We use a structure `PairwiseHash` to encapsulate the logic of a parent hash generated from a pair of left and right child hashes.
+5. The `PairwiseHash` struct also implements the `Provable` (and `CircuitCompiler`) interface, which then is used to recursively
 verify the `MerkleTree` hashing generation.
 6. We provide extensive testing, that verify that a given well generated Merkle Tree is proved and verified correctly, as well, as this
 fails for ill formed Merkle Trees (by changing data, root and digests).
