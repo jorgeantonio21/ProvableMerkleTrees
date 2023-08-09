@@ -98,7 +98,7 @@ impl Provable<F, C, D> for MerkleTree {
         let mut current_tree_height_index = 0;
         let mut current_child_hash_index = 0;
         let mut parent_hash_index = 1 << merkle_tree_height;
-        for height in 0..(merkle_tree_height - 1) {
+        for height in 0..(merkle_tree_height) {
             while current_child_hash_index
                 < current_tree_height_index + (1 << (merkle_tree_height - height))
             {
