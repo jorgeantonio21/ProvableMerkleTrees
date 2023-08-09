@@ -23,12 +23,22 @@ pub(crate) struct RecursiveHash {
 }
 
 impl RecursiveHash {
+    pub fn new(left_hash: HashOut<F>, right_hash: HashOut<F>, parent_hash: HashOut<F>) -> Self {
+        Self {
+            left_hash,
+            right_hash,
+            parent_hash,
+        }
+    }
+
+    #[allow(dead_code)]
     pub fn new_from_data(left_data: &[F], right_data: &[F]) -> Self {
         let left_hash = PoseidonHash::hash_no_pad(left_data);
         let right_hash = PoseidonHash::hash_no_pad(right_data);
         Self::hash_inputs(left_hash, right_hash)
     }
 
+    #[allow(dead_code)]
     pub fn hash_inputs(left_hash: HashOut<F>, right_hash: HashOut<F>) -> Self {
         let parent_hash =
             PoseidonHash::hash_no_pad(&[left_hash.elements, right_hash.elements].concat());

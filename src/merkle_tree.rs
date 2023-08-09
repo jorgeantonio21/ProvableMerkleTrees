@@ -1,8 +1,5 @@
 use crate::{
-    circuit_compiler::{CircuitCompiler, ProofData},
-    provable::Provable,
-    recursive_hash::RecursiveHash,
-    C, D, F,
+    circuit_compiler::ProofData, provable::Provable, recursive_hash::RecursiveHash, C, D, F,
 };
 use anyhow::Error;
 use plonky2::{
@@ -15,7 +12,7 @@ use plonky2::{
 // see https://github.com/mir-protocol/plonky2/blob/main/plonky2/src/hash/merkle_tree.rs#L39.
 pub struct MerkleTree {
     pub(crate) leaves: Vec<Vec<F>>,
-    pub(crate) recursive_hashes: Vec<RecursiveHash>,
+    pub(crate) digests: Vec<HashOut<F>>,
     pub(crate) root: HashOut<F>,
 }
 
@@ -25,34 +22,36 @@ impl MerkleTree {
         debug_assert!(data.len().is_power_of_two() && data.len() > 1);
 
         let merkle_tree_height = data.len().ilog2();
-        let mut recursive_hashes = vec![];
+        let mut digests = vec![];
 
-        for i in (0..data.len()).step_by(2) {
-            let left_leaf_hash = PoseidonHash::hash_or_noop(&data[i]);
-            let right_leaf_hash = PoseidonHash::hash_or_noop(&data[i + 1]);
-            recursive_hashes.push(RecursiveHash::hash_inputs(left_leaf_hash, right_leaf_hash));
+        for i in 0..data.len() {
+            let leaf_hash = PoseidonHash::hash_or_noop(&data[i]);
+            digests.push(leaf_hash);
         }
 
         let mut current_tree_height_index = 0;
         let mut i = 0;
-        for height in 1..merkle_tree_height {
+        for height in 0..merkle_tree_height {
             while i < current_tree_height_index + (1 << (merkle_tree_height - height)) {
-                let recursive_hash = RecursiveHash::hash_inputs(
-                    recursive_hashes[i as usize].evaluate(),
-                    recursive_hashes[i as usize + 1].evaluate(),
+                let hash = PoseidonHash::hash_or_noop(
+                    &[
+                        digests[i as usize].elements,
+                        digests[i as usize + 1].elements,
+                    ]
+                    .concat(),
                 );
-                recursive_hashes.push(recursive_hash);
+                digests.push(hash);
                 i += 2;
             }
             current_tree_height_index += 1 << (merkle_tree_height - height);
         }
 
         // we assume that the number of leaves is > 1, so we should have a proper root
-        let root = recursive_hashes.last().unwrap().evaluate();
+        let root = *digests.last().unwrap();
 
         Self {
             leaves: data,
-            recursive_hashes,
+            digests,
             root,
         }
     }
@@ -65,33 +64,22 @@ impl Provable<F, C, D> for MerkleTree {
         let mut partial_witness = PartialWitness::<F>::new();
 
         // We first enforce that the hashes of the MerkleTree leaves correspond to the first recursive hashes
-        for i in (0..self.leaves.len()).step_by(2) {
-            let left_data = &self.leaves[i];
-            let right_data = &self.leaves[i + 1];
-            let recursive_hash = &self.recursive_hashes[i / 2];
+        for i in 0..self.leaves.len() {
+            let leaf_data = &self.leaves[i];
 
-            let left_data_targets = circuit_builder.add_virtual_targets(left_data.len());
-            let right_data_targets = circuit_builder.add_virtual_targets(right_data.len());
+            let leaf_data_targets = circuit_builder.add_virtual_targets(leaf_data.len());
 
-            let left_hash_targets =
-                circuit_builder.hash_or_noop::<PoseidonHash>(left_data_targets.clone());
-            let right_hash_targets =
-                circuit_builder.hash_or_noop::<PoseidonHash>(right_data_targets.clone());
+            let leaf_hash_targets =
+                circuit_builder.hash_or_noop::<PoseidonHash>(leaf_data_targets.clone());
 
-            let should_be_left_hash_targets = circuit_builder.add_virtual_hash();
-            let should_be_right_hash_targets = circuit_builder.add_virtual_hash();
+            let should_be_leaf_hash_targets = circuit_builder.add_virtual_hash();
 
-            circuit_builder.connect_hashes(left_hash_targets, should_be_left_hash_targets);
-            circuit_builder.connect_hashes(right_hash_targets, should_be_right_hash_targets);
+            circuit_builder.connect_hashes(leaf_hash_targets, should_be_leaf_hash_targets);
 
-            (0..left_data.len())
-                .for_each(|i| partial_witness.set_target(left_data_targets[i], left_data[i]));
-            (0..right_data.len())
-                .for_each(|i| partial_witness.set_target(right_data_targets[i], right_data[i]));
+            (0..leaf_data.len())
+                .for_each(|i| partial_witness.set_target(leaf_data_targets[i], leaf_data[i]));
 
-            partial_witness.set_hash_target(should_be_left_hash_targets, recursive_hash.left_hash);
-            partial_witness
-                .set_hash_target(should_be_right_hash_targets, recursive_hash.right_hash);
+            partial_witness.set_hash_target(should_be_leaf_hash_targets, self.digests[i]);
         }
 
         // We check that the `MerkleTree` root is well defined
@@ -100,49 +88,28 @@ impl Provable<F, C, D> for MerkleTree {
 
         circuit_builder.connect_hashes(tree_root_hash_targets, should_be_tree_root_hash_targets);
 
-        partial_witness.set_hash_target(
-            tree_root_hash_targets,
-            self.recursive_hashes.last().unwrap().evaluate(),
-        );
+        partial_witness.set_hash_target(tree_root_hash_targets, *self.digests.last().unwrap());
         partial_witness.set_hash_target(should_be_tree_root_hash_targets, self.root);
 
-        // Finally, we need to link each consecutive pair of `RecursiveHash` roots
-        // with the leaves of its parent `RecursiveHash`
-        let merkle_tree_height = self.leaves.len().ilog2() as usize - 1;
+        // From each two consecutive pair of digests, we generate a `RecursiveHash`
+        // that we later use for proof generation and verification
+        let merkle_tree_height = self.leaves.len().ilog2() as usize;
+        let mut recursive_hashes = vec![];
         let mut current_tree_height_index = 0;
-        let mut i = 0;
-        let mut j = 1 << merkle_tree_height;
-        for height in 1..(merkle_tree_height - 1) {
-            while i < current_tree_height_index + (1 << (merkle_tree_height - height)) {
-                let left_child_root_hash_targets = circuit_builder.add_virtual_hash();
-                let right_child_root_hash_targets = circuit_builder.add_virtual_hash();
-
-                let left_child_hash_targets = circuit_builder.add_virtual_hash();
-                let right_child_hash_targets = circuit_builder.add_virtual_hash();
-
-                circuit_builder
-                    .connect_hashes(left_child_root_hash_targets, left_child_hash_targets);
-                circuit_builder
-                    .connect_hashes(right_child_root_hash_targets, right_child_hash_targets);
-
-                partial_witness.set_hash_target(
-                    left_child_root_hash_targets,
-                    self.recursive_hashes[i].evaluate(),
+        let mut current_child_hash_index = 0;
+        let mut parent_hash_index = 1 << merkle_tree_height;
+        for height in 0..(merkle_tree_height - 1) {
+            while current_child_hash_index
+                < current_tree_height_index + (1 << (merkle_tree_height - height))
+            {
+                let recursive_hash = RecursiveHash::new(
+                    self.digests[current_child_hash_index],
+                    self.digests[current_child_hash_index + 1],
+                    self.digests[parent_hash_index],
                 );
-                partial_witness.set_hash_target(
-                    right_child_root_hash_targets,
-                    self.recursive_hashes[i + 1].evaluate(),
-                );
-
-                partial_witness
-                    .set_hash_target(left_child_hash_targets, self.recursive_hashes[j].left_hash);
-                partial_witness.set_hash_target(
-                    right_child_hash_targets,
-                    self.recursive_hashes[j].right_hash,
-                );
-
-                i += 2;
-                j += 1;
+                recursive_hashes.push(recursive_hash);
+                current_child_hash_index += 2;
+                parent_hash_index += 1;
             }
             current_tree_height_index += 1 << (merkle_tree_height - height);
         }
@@ -150,7 +117,7 @@ impl Provable<F, C, D> for MerkleTree {
         // Recursive proof verification of the
         // NOTE: we can parallelize the process of generating the recursive proofs for each
         // [`RecursiveHash`]
-        for recursive_hash in self.recursive_hashes {
+        for recursive_hash in recursive_hashes {
             let proof_data = recursive_hash.proof()?;
             let proof_with_pis_target =
                 circuit_builder.add_virtual_proof_with_pis(&proof_data.circuit_data.common);
@@ -224,9 +191,42 @@ mod tests {
         let merkle_tree_leaves = vec![vec![f_one], vec![f_two], vec![f_three], vec![f_four]];
 
         let mut merkle_tree = MerkleTree::create(merkle_tree_leaves.clone());
-        merkle_tree.recursive_hashes[2] = RecursiveHash::new_from_data(
-            &[F::from_canonical_u64(128)],
-            &[F::from_canonical_u64(256)],
+        merkle_tree.digests[2] = PoseidonHash::hash_or_noop(&vec![F::ZERO]);
+        assert!(merkle_tree.prove_and_verify().is_err());
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_proof_generation_fails_for_invalid_data() {
+        let f_one: F = F::ONE;
+        let f_two: F = F::from_canonical_u64(2);
+        let f_three: F = F::from_canonical_u64(3);
+        let f_four: F = F::from_canonical_u64(4);
+
+        let merkle_tree_leaves = vec![vec![f_one], vec![f_two], vec![f_three], vec![f_four]];
+
+        let mut merkle_tree = MerkleTree::create(merkle_tree_leaves.clone());
+        merkle_tree.leaves[0] = vec![F::ZERO];
+        assert!(merkle_tree.prove_and_verify().is_err());
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_proof_generation_fails_for_invalid_root() {
+        let f_one: F = F::ONE;
+        let f_two: F = F::from_canonical_u64(2);
+        let f_three: F = F::from_canonical_u64(3);
+        let f_four: F = F::from_canonical_u64(4);
+
+        let merkle_tree_leaves = vec![vec![f_one], vec![f_two], vec![f_three], vec![f_four]];
+
+        let mut merkle_tree = MerkleTree::create(merkle_tree_leaves.clone());
+        merkle_tree.root = PoseidonHash::hash_or_noop(
+            &[
+                [F::ZERO, F::ONE, F::ZERO, F::ONE],
+                [F::ONE, F::ZERO, F::ONE, F::ZERO],
+            ]
+            .concat(),
         );
         assert!(merkle_tree.prove_and_verify().is_err());
     }
@@ -243,6 +243,62 @@ mod tests {
         let f_eight: F = F::from_canonical_u64(8);
 
         let merkle_tree_leaves = vec![
+            vec![f_one],
+            vec![f_two],
+            vec![f_three],
+            vec![f_four],
+            vec![f_five],
+            vec![f_six],
+            vec![f_seven],
+            vec![f_eight],
+            vec![f_one],
+            vec![f_two],
+            vec![f_three],
+            vec![f_four],
+            vec![f_five],
+            vec![f_six],
+            vec![f_seven],
+            vec![f_eight],
+            vec![f_one],
+            vec![f_two],
+            vec![f_three],
+            vec![f_four],
+            vec![f_five],
+            vec![f_six],
+            vec![f_seven],
+            vec![f_eight],
+            vec![f_one],
+            vec![f_two],
+            vec![f_three],
+            vec![f_four],
+            vec![f_five],
+            vec![f_six],
+            vec![f_seven],
+            vec![f_eight],
+            vec![f_one],
+            vec![f_two],
+            vec![f_three],
+            vec![f_four],
+            vec![f_five],
+            vec![f_six],
+            vec![f_seven],
+            vec![f_eight],
+            vec![f_one],
+            vec![f_two],
+            vec![f_three],
+            vec![f_four],
+            vec![f_five],
+            vec![f_six],
+            vec![f_seven],
+            vec![f_eight],
+            vec![f_one],
+            vec![f_two],
+            vec![f_three],
+            vec![f_four],
+            vec![f_five],
+            vec![f_six],
+            vec![f_seven],
+            vec![f_eight],
             vec![f_one],
             vec![f_two],
             vec![f_three],
