@@ -19,3 +19,7 @@ to generate/verify proofs.
 5. The `PairwiseHash` struct also implements the `Provable` (and `CircuitCompiler`) interface, which then is used to recursively
 verify the `MerkleTree` hashing generation.
 6. We provide extensive testing. Our tests cover the examples in which a given well generated Merkle Tree is proved and verified correctly, as well, failure case for ill formed Merkle Trees (by changing data, root and digests).
+
+## Other remarks
+
+We decided to use `PoseidonHash::hash_or_noop` as the default hash method (it acts as the identity, on values that fit in 256-bit memory), to be consistent with Plonky2's `MerkleTree` default behavior.
