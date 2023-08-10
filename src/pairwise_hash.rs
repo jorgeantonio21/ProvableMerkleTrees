@@ -33,8 +33,8 @@ impl PairwiseHash {
 
     #[allow(dead_code)]
     pub fn new_from_data(left_data: &[F], right_data: &[F]) -> Self {
-        let left_hash = PoseidonHash::hash_no_pad(left_data);
-        let right_hash = PoseidonHash::hash_no_pad(right_data);
+        let left_hash = PoseidonHash::hash_or_noop(left_data);
+        let right_hash = PoseidonHash::hash_or_noop(right_data);
         Self::hash_inputs(left_hash, right_hash)
     }
 
@@ -132,5 +132,23 @@ mod tests {
 
         let pairwise_hash = PairwiseHash::new_from_data(&[f_0], &[f_1]);
         assert!(pairwise_hash.prove_and_verify().is_ok());
+    }
+
+    #[test]
+    fn test_pairwise_hash_well_formed() {
+        let f_0 = F::ZERO;
+        let f_1 = F::ONE;
+
+        let pairwise_hash = PairwiseHash::new_from_data(&[f_0], &[f_1]);
+        assert_eq!(
+            pairwise_hash.parent_hash,
+            PoseidonHash::hash_or_noop(
+                &[
+                    PoseidonHash::hash_or_noop(&[f_0]).elements,
+                    PoseidonHash::hash_or_noop(&[f_1]).elements
+                ]
+                .concat()
+            )
+        );
     }
 }
