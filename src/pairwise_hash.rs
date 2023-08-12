@@ -5,7 +5,7 @@ use plonky2::{
         poseidon::PoseidonHash,
     },
     iop::witness::PartialWitness,
-    iop::witness::WitnessWrite,
+    iop::{target::Target, witness::WitnessWrite},
     plonk::{circuit_builder::CircuitBuilder, circuit_data::CircuitConfig, config::Hasher},
 };
 
@@ -16,35 +16,32 @@ use crate::{
 };
 
 #[derive(Clone, Debug)]
+pub struct HashData {
+    pub(crate) data: Vec<F>,
+    pub(crate) hash: HashOut<F>,
+}
+
+impl HashData {
+    pub(crate) fn new(data: Vec<F>) -> Self {
+        let hash = PoseidonHash::hash_or_noop(&data);
+        Self { data, hash }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub(crate) struct PairwiseHash {
-    pub(crate) left_hash: HashOut<F>,
-    pub(crate) right_hash: HashOut<F>,
+    pub(crate) left_child: HashData,
+    pub(crate) right_child: HashData,
     pub(crate) parent_hash: HashOut<F>,
 }
 
 impl PairwiseHash {
-    pub fn new(left_hash: HashOut<F>, right_hash: HashOut<F>, parent_hash: HashOut<F>) -> Self {
+    pub fn new(left_child_data: Vec<F>, right_child_data: Vec<F>, parent_hash: HashOut<F>) -> Self {
+        let left_child = HashData::new(left_child_data);
+        let right_child = HashData::new(right_child_data);
         Self {
-            left_hash,
-            right_hash,
-            parent_hash,
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn new_from_data(left_data: &[F], right_data: &[F]) -> Self {
-        let left_hash = PoseidonHash::hash_or_noop(left_data);
-        let right_hash = PoseidonHash::hash_or_noop(right_data);
-        Self::hash_inputs(left_hash, right_hash)
-    }
-
-    #[allow(dead_code)]
-    pub fn hash_inputs(left_hash: HashOut<F>, right_hash: HashOut<F>) -> Self {
-        let parent_hash =
-            PoseidonHash::hash_no_pad(&[left_hash.elements, right_hash.elements].concat());
-        Self {
-            left_hash,
-            right_hash,
+            left_child,
+            right_child,
             parent_hash,
         }
     }
@@ -52,7 +49,7 @@ impl PairwiseHash {
 
 impl CircuitCompiler<F, D> for PairwiseHash {
     type Value = HashOut<F>;
-    type Targets = [HashOutTarget; 2];
+    type Targets = (Vec<Target>, Vec<Target>, HashOutTarget, HashOutTarget);
     type OutTargets = HashOutTarget;
 
     fn evaluate(&self) -> Self::Value {
@@ -63,18 +60,42 @@ impl CircuitCompiler<F, D> for PairwiseHash {
         &self,
         circuit_builder: &mut CircuitBuilder<F, D>,
     ) -> (Self::Targets, Self::OutTargets) {
+        let left_data_targets = circuit_builder.add_virtual_targets(self.left_child.data.len());
+        let right_data_targets = circuit_builder.add_virtual_targets(self.right_child.data.len());
+
+        // register public inputs
+        circuit_builder.register_public_inputs(&left_data_targets);
+        circuit_builder.register_public_inputs(&right_data_targets);
+
         let left_hash_targets = circuit_builder.add_virtual_hash();
         let right_hash_targets = circuit_builder.add_virtual_hash();
+
+        let should_be_left_hash_targets =
+            circuit_builder.hash_or_noop::<PoseidonHash>(left_data_targets);
+        let should_be_right_hash_targets =
+            circuit_builder.hash_or_noop::<PoseidonHash>(right_data_targets);
+
+        circuit_builder.connect_hashes(should_be_left_hash_targets, left_hash_targets);
+        circuit_builder.connect_hashes(should_be_right_hash_targets, right_hash_targets);
+
         let parent_hash_targets = circuit_builder.add_virtual_hash();
 
-        let should_be_parent_hash_targets = circuit_builder.hash_n_to_hash_no_pad::<PoseidonHash>(
+        let should_be_parent_hash_targets = circuit_builder.hash_or_noop::<PoseidonHash>(
             [left_hash_targets.elements, right_hash_targets.elements].concat(),
         );
 
-        circuit_builder.connect_hashes(parent_hash_targets, should_be_parent_hash_targets);
+        circuit_builder.connect_hashes(should_be_parent_hash_targets, parent_hash_targets);
 
         let hash_targets = [left_hash_targets, right_hash_targets];
-        (hash_targets, parent_hash_targets)
+        (
+            (
+                left_data_targets,
+                right_data_targets,
+                left_hash_targets,
+                right_hash_targets,
+            ),
+            parent_hash_targets,
+        )
     }
 
     fn fill(
@@ -83,13 +104,28 @@ impl CircuitCompiler<F, D> for PairwiseHash {
         targets: Self::Targets,
         out_targets: Self::OutTargets,
     ) -> Result<(), anyhow::Error> {
-        let left_hash_targets = targets[0];
-        let right_hash_targets = targets[1];
+        let left_data_targets = targets.0;
+        let right_data_targets = targets.1;
+        let left_hash_targets = targets.2;
+        let right_hash_targets = targets.3;
         let parent_hash_targets = out_targets;
 
+        (0..left_data_targets.len()).for_each(|i| {
+            partial_witness.set_target(left_data_targets[i], self.left_child.data[i])
+        });
+        (0..right_data_targets.len()).for_each(|i| {
+            partial_witness.set_target(right_data_targets[i], self.right_child.data[i])
+        });
+
         (0..4).for_each(|i| {
-            partial_witness.set_target(left_hash_targets.elements[i], self.left_hash.elements[i]);
-            partial_witness.set_target(right_hash_targets.elements[i], self.right_hash.elements[i]);
+            partial_witness.set_target(
+                left_hash_targets.elements[i],
+                self.left_child.hash.elements[i],
+            );
+            partial_witness.set_target(
+                right_hash_targets.elements[i],
+                self.right_child.hash.elements[i],
+            );
             partial_witness.set_target(
                 parent_hash_targets.elements[i],
                 self.parent_hash.elements[i],
