@@ -216,7 +216,7 @@ impl Provable<F, C, D> for RecursivePairwiseHash {
 
 #[cfg(test)]
 mod tests {
-    use plonky2::{field::types::Field, plonk::circuit_builder};
+    use plonky2::field::types::Field;
 
     use super::*;
 
