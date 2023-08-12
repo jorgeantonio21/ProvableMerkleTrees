@@ -270,4 +270,58 @@ mod tests {
 
         assert!(recursive_pairwise_hash.prove_and_verify().is_ok());
     }
+
+    #[test]
+    #[should_panic]
+    fn test_recursive_pairwise_hash_fails_if_hash_is_invalid() {
+        let left_hash = PoseidonHash::hash_or_noop(&[F::ZERO]);
+        let right_hash = PoseidonHash::hash_or_noop(&[F::ONE]);
+
+        let mut circuit_builder =
+            CircuitBuilder::<F, D>::new(CircuitConfig::standard_recursion_config());
+        let mut partial_witness = PartialWitness::<F>::new();
+
+        let left_hash_targets = circuit_builder.add_virtual_hash();
+        circuit_builder.register_public_inputs(&left_hash_targets.elements);
+        partial_witness.set_hash_target(left_hash_targets, left_hash);
+
+        let circuit_data = circuit_builder.build::<C>();
+        let proof_with_pis = circuit_data
+            .prove(partial_witness)
+            .expect("Failed to prove left hash");
+
+        let left_proof_data = ProofData {
+            circuit_data,
+            proof_with_pis,
+        };
+
+        let left_recursive_hash = RecursiveHash::new(left_hash, left_proof_data);
+
+        let mut circuit_builder =
+            CircuitBuilder::<F, D>::new(CircuitConfig::standard_recursion_config());
+        let mut partial_witness = PartialWitness::<F>::new();
+
+        let right_hash_targets = circuit_builder.add_virtual_hash();
+        circuit_builder.register_public_inputs(&right_hash_targets.elements);
+        partial_witness.set_hash_target(right_hash_targets, right_hash);
+
+        let circuit_data = circuit_builder.build::<C>();
+        let proof_with_pis = circuit_data
+            .prove(partial_witness)
+            .expect("Failed to prove left hash");
+
+        let right_proof_data = ProofData {
+            circuit_data,
+            proof_with_pis,
+        };
+
+        let right_recursive_hash = RecursiveHash::new(right_hash, right_proof_data);
+
+        let mut recursive_pairwise_hash =
+            RecursivePairwiseHash::new(left_recursive_hash, right_recursive_hash);
+
+        recursive_pairwise_hash.left_recursive_hash.hash =
+            PoseidonHash::hash_or_noop(&[F::from_canonical_u8(255)]);
+        assert!(recursive_pairwise_hash.prove_and_verify().is_err());
+    }
 }
