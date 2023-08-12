@@ -36,9 +36,12 @@ pub(crate) struct PairwiseHash {
 }
 
 impl PairwiseHash {
-    pub fn new(left_child_data: Vec<F>, right_child_data: Vec<F>, parent_hash: HashOut<F>) -> Self {
+    pub fn new(left_child_data: Vec<F>, right_child_data: Vec<F>) -> Self {
         let left_child = HashData::new(left_child_data);
         let right_child = HashData::new(right_child_data);
+        let parent_hash = PoseidonHash::hash_or_noop(
+            &[left_child.hash.elements, right_child.hash.elements].concat(),
+        );
         Self {
             left_child,
             right_child,
@@ -63,22 +66,21 @@ impl CircuitCompiler<F, D> for PairwiseHash {
         let left_data_targets = circuit_builder.add_virtual_targets(self.left_child.data.len());
         let right_data_targets = circuit_builder.add_virtual_targets(self.right_child.data.len());
 
-        // register public inputs
-        circuit_builder.register_public_inputs(&left_data_targets);
-        circuit_builder.register_public_inputs(&right_data_targets);
-
         let left_hash_targets = circuit_builder.add_virtual_hash();
         let right_hash_targets = circuit_builder.add_virtual_hash();
 
         let should_be_left_hash_targets =
-            circuit_builder.hash_or_noop::<PoseidonHash>(left_data_targets);
+            circuit_builder.hash_or_noop::<PoseidonHash>(left_data_targets.clone());
         let should_be_right_hash_targets =
-            circuit_builder.hash_or_noop::<PoseidonHash>(right_data_targets);
+            circuit_builder.hash_or_noop::<PoseidonHash>(right_data_targets.clone());
 
         circuit_builder.connect_hashes(should_be_left_hash_targets, left_hash_targets);
         circuit_builder.connect_hashes(should_be_right_hash_targets, right_hash_targets);
 
         let parent_hash_targets = circuit_builder.add_virtual_hash();
+
+        // register public inputs
+        circuit_builder.register_public_inputs(&parent_hash_targets.elements);
 
         let should_be_parent_hash_targets = circuit_builder.hash_or_noop::<PoseidonHash>(
             [left_hash_targets.elements, right_hash_targets.elements].concat(),
@@ -86,7 +88,6 @@ impl CircuitCompiler<F, D> for PairwiseHash {
 
         circuit_builder.connect_hashes(should_be_parent_hash_targets, parent_hash_targets);
 
-        let hash_targets = [left_hash_targets, right_hash_targets];
         (
             (
                 left_data_targets,
@@ -166,7 +167,7 @@ mod tests {
         let f_0 = F::ZERO;
         let f_1 = F::ONE;
 
-        let pairwise_hash = PairwiseHash::new_from_data(&[f_0], &[f_1]);
+        let pairwise_hash = PairwiseHash::new(vec![f_0], vec![f_1]);
         assert!(pairwise_hash.prove_and_verify().is_ok());
     }
 
@@ -175,7 +176,7 @@ mod tests {
         let f_0 = F::ZERO;
         let f_1 = F::ONE;
 
-        let pairwise_hash = PairwiseHash::new_from_data(&[f_0], &[f_1]);
+        let pairwise_hash = PairwiseHash::new(vec![f_0], vec![f_1]);
         assert_eq!(
             pairwise_hash.parent_hash,
             PoseidonHash::hash_or_noop(
