@@ -19,34 +19,50 @@ use crate::{
 };
 
 pub struct RecursiveHash {
-    pub(crate) left_hash: HashOut<F>,
-    pub(crate) right_hash: HashOut<F>,
-    pub(crate) parent_hash: HashOut<F>,
+    pub(crate) hash: HashOut<F>,
     pub(crate) proof_data: ProofData<F, C, D>,
 }
 
 impl RecursiveHash {
+    pub fn new(hash: HashOut<F>, proof_data: ProofData<F, C, D>) -> Self {
+        Self { hash, proof_data }
+    }
+}
+
+pub struct RecursivePairwiseHash {
+    pub(crate) left_recursive_hash: RecursiveHash,
+    pub(crate) right_recursive_hash: RecursiveHash,
+    pub(crate) parent_hash: HashOut<F>,
+}
+
+impl RecursivePairwiseHash {
     pub fn new(
-        left_hash: HashOut<F>,
-        right_hash: HashOut<F>,
+        left_recursive_hash: RecursiveHash,
+        right_recursive_hash: RecursiveHash,
         proof_data: ProofData<F, C, D>,
     ) -> Self {
-        let parent_hash =
-            PoseidonHash::hash_or_noop(&[left_hash.elements, right_hash.elements].concat());
+        let parent_hash = PoseidonHash::hash_or_noop(
+            &[
+                left_recursive_hash.hash.elements,
+                right_recursive_hash.hash.elements,
+            ]
+            .concat(),
+        );
         Self {
-            left_hash,
-            right_hash,
+            left_recursive_hash,
+            right_recursive_hash,
             parent_hash,
-            proof_data,
         }
     }
 }
 
-impl CircuitCompiler<F, D> for RecursiveHash {
+impl CircuitCompiler<F, D> for RecursivePairwiseHash {
     type Value = HashOut<F>;
     type Targets = (
         HashOutTarget,
         HashOutTarget,
+        ProofWithPublicInputsTarget<D>,
+        VerifierCircuitTarget,
         ProofWithPublicInputsTarget<D>,
         VerifierCircuitTarget,
     );
@@ -73,10 +89,11 @@ impl CircuitCompiler<F, D> for RecursiveHash {
         circuit_builder.connect_hashes(should_be_parent_hash_targets, parent_hash_targets);
 
         // add targets for recursion
-        let proof_with_pis_targets =
-            circuit_builder.add_virtual_proof_with_pis(&self.proof_data.circuit_data.common);
-        let verifier_data_targets = circuit_builder.add_virtual_verifier_data(
-            self.proof_data
+        let left_proof_with_pis_targets = circuit_builder
+            .add_virtual_proof_with_pis(&self.left_recursive_hash.proof_data.circuit_data.common);
+        let left_verifier_data_targets = circuit_builder.add_virtual_verifier_data(
+            self.left_recursive_hash
+                .proof_data
                 .circuit_data
                 .common
                 .config
@@ -84,12 +101,50 @@ impl CircuitCompiler<F, D> for RecursiveHash {
                 .cap_height,
         );
 
+        let right_proof_with_pis_targets = circuit_builder
+            .add_virtual_proof_with_pis(&self.right_recursive_hash.proof_data.circuit_data.common);
+        let right_verifier_data_targets = circuit_builder.add_virtual_verifier_data(
+            self.right_recursive_hash
+                .proof_data
+                .circuit_data
+                .common
+                .config
+                .fri_config
+                .cap_height,
+        );
+
+        // we need to enforce that the public inputs of `proof_with_pis_targets` do agree
+        // with the child hash targets
+        let true_bool_target = circuit_builder._true();
+        let false_bool_target = circuit_builder._false();
+        if left_proof_with_pis_targets.public_inputs.len() != 4 {
+            circuit_builder.connect(true_bool_target.target, false_bool_target.target);
+        }
+        (0..4).for_each(|i| {
+            circuit_builder.connect(
+                left_proof_with_pis_targets.public_inputs[i],
+                left_hash_targets.elements[i],
+            )
+        });
+
+        if right_proof_with_pis_targets.public_inputs.len() != 4 {
+            circuit_builder.connect(true_bool_target.target, false_bool_target.target);
+        }
+        (0..4).for_each(|i| {
+            circuit_builder.connect(
+                right_proof_with_pis_targets.public_inputs[i],
+                right_hash_targets.elements[i],
+            )
+        });
+
         (
             (
                 left_hash_targets,
                 right_hash_targets,
-                proof_with_pis_targets,
-                verifier_data_targets,
+                left_proof_with_pis_targets,
+                left_verifier_data_targets,
+                right_proof_with_pis_targets,
+                right_verifier_data_targets,
             ),
             parent_hash_targets,
         )
@@ -101,24 +156,50 @@ impl CircuitCompiler<F, D> for RecursiveHash {
         targets: Self::Targets,
         out_targets: Self::OutTargets,
     ) -> Result<(), anyhow::Error> {
-        let (left_hash_targets, right_hash_targets, proof_with_pis_targets, verifier_data_targets) =
-            targets;
+        let (
+            left_hash_targets,
+            right_hash_targets,
+            left_proof_with_pis_targets,
+            left_verifier_data_targets,
+            right_proof_with_pis_targets,
+            right_verifier_data_targets,
+        ) = targets;
 
-        partial_witness.set_hash_target(left_hash_targets, self.left_hash);
-        partial_witness.set_hash_target(right_hash_targets, self.right_hash);
+        partial_witness.set_hash_target(left_hash_targets, self.left_recursive_hash.hash);
+        partial_witness.set_hash_target(right_hash_targets, self.right_recursive_hash.hash);
         partial_witness.set_hash_target(out_targets, self.parent_hash);
-        partial_witness
-            .set_proof_with_pis_target(&proof_with_pis_targets, &self.proof_data.proof_with_pis);
+
+        partial_witness.set_proof_with_pis_target(
+            &left_proof_with_pis_targets,
+            &self.left_recursive_hash.proof_data.proof_with_pis,
+        );
         partial_witness.set_verifier_data_target(
-            &verifier_data_targets,
-            &self.proof_data.circuit_data.verifier_only,
+            &left_verifier_data_targets,
+            &self
+                .left_recursive_hash
+                .proof_data
+                .circuit_data
+                .verifier_only,
+        );
+
+        partial_witness.set_proof_with_pis_target(
+            &right_proof_with_pis_targets,
+            &self.right_recursive_hash.proof_data.proof_with_pis,
+        );
+        partial_witness.set_verifier_data_target(
+            &right_verifier_data_targets,
+            &self
+                .right_recursive_hash
+                .proof_data
+                .circuit_data
+                .verifier_only,
         );
 
         Ok(())
     }
 }
 
-impl Provable<F, C, D> for RecursiveHash {
+impl Provable<F, C, D> for RecursivePairwiseHash {
     fn proof(self) -> Result<ProofData<F, C, D>, anyhow::Error> {
         let config = CircuitConfig::standard_recursion_config();
         let mut circuit_builder = CircuitBuilder::new(config);
