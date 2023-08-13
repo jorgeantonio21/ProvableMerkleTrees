@@ -11,6 +11,7 @@ use plonky2::{
     iop::witness::{PartialWitness, WitnessWrite},
     plonk::{circuit_builder::CircuitBuilder, circuit_data::CircuitConfig, config::Hasher},
 };
+use rayon::prelude::*;
 
 // Our implementation is inspired by the one of Plonky2:
 // see https://github.com/mir-protocol/plonky2/blob/main/plonky2/src/hash/merkle_tree.rs#L39.
@@ -28,8 +29,8 @@ impl MerkleTree {
         let merkle_tree_height = data.len().ilog2();
         let mut digests = vec![];
 
-        for i in 0..data.len() {
-            let leaf_hash = PoseidonHash::hash_or_noop(&data[i]);
+        for digest in &data {
+            let leaf_hash = PoseidonHash::hash_or_noop(digest);
             digests.push(leaf_hash);
         }
 
@@ -65,44 +66,92 @@ impl Provable<F, C, D> for MerkleTree {
     fn proof(self) -> Result<ProofData<F, C, D>, Error> {
         let merkle_tree_height = self.leaves.len().ilog2() as usize;
         let mut proof_datas = vec![];
-        let mut current_tree_height_index = 0;
         let mut current_child_hash_index = 0;
         let mut proof_data_index = 0;
+        // for height in 0..merkle_tree_height {
+        //     while current_child_hash_index
+        //         < current_tree_height_index + (1 << (merkle_tree_height - height))
+        //     {
+        //         if height == 0 {
+        //             let pairwise_hash = PairwiseHash::new(
+        //                 self.leaves[current_child_hash_index].clone(),
+        //                 self.digests[current_child_hash_index],
+        //                 self.leaves[current_child_hash_index + 1].clone(),
+        //                 self.digests[current_child_hash_index + 1],
+        //             );
+        //             let proof_data = pairwise_hash.proof()?;
+        //             proof_datas.push(proof_data);
+        //         } else {
+        //             let left_recursive_hash = RecursiveHash::new(
+        //                 self.digests[current_child_hash_index],
+        //                 &proof_datas[proof_data_index],
+        //             );
+        //             let right_recursive_hash = RecursiveHash::new(
+        //                 self.digests[current_child_hash_index + 1],
+        //                 &proof_datas[proof_data_index + 1],
+        //             );
+        //             let recursive_pairwise_hash =
+        //                 RecursivePairwiseHash::new(left_recursive_hash, right_recursive_hash);
+        //             let proof_data = recursive_pairwise_hash.proof()?;
+        //             proof_datas.push(proof_data);
+        //             proof_data_index += 2;
+        //         }
+        //         current_child_hash_index += 2;
+        //     }
+        //     current_tree_height_index += 1 << (merkle_tree_height - height);
+        // }
+
+        // Parallelize the loop using rayon
         for height in 0..(merkle_tree_height) {
-            while current_child_hash_index
-                < current_tree_height_index + (1 << (merkle_tree_height - height))
-            {
-                println!(
-                    "FLAG: DEBUG current_child_hash_index = {}, proof_data_index = {}",
-                    current_child_hash_index, proof_data_index
-                );
-                if height == 0 {
-                    let pairwise_hash = PairwiseHash::new(
-                        self.leaves[current_child_hash_index].clone(),
-                        self.digests[current_child_hash_index],
-                        self.leaves[current_child_hash_index + 1].clone(),
-                        self.digests[current_child_hash_index + 1],
-                    );
-                    let proof_data = pairwise_hash.proof()?;
-                    proof_datas.push(proof_data);
-                } else {
-                    let left_recursive_hash = RecursiveHash::new(
-                        self.digests[current_child_hash_index],
-                        &proof_datas[proof_data_index],
-                    );
-                    let right_recursive_hash = RecursiveHash::new(
-                        self.digests[current_child_hash_index + 1],
-                        &proof_datas[proof_data_index + 1],
-                    );
-                    let recursive_pairwise_hash =
-                        RecursivePairwiseHash::new(left_recursive_hash, right_recursive_hash);
-                    let proof_data = recursive_pairwise_hash.proof()?;
-                    proof_datas.push(proof_data);
-                    proof_data_index += 2;
-                }
-                current_child_hash_index += 2;
-            }
-            current_tree_height_index += 1 << (merkle_tree_height - height);
+            let chunk_size = 1 << (merkle_tree_height - height);
+
+            let thread_proof_datas: Vec<_> = if height == 0 {
+                (current_child_hash_index..current_child_hash_index + chunk_size)
+                    .into_par_iter()
+                    .step_by(2)
+                    .map(|current_child_index| {
+                        let pairwise_hash = PairwiseHash::new(
+                            self.leaves[current_child_index].clone(),
+                            self.digests[current_child_index],
+                            self.leaves[current_child_index + 1].clone(),
+                            self.digests[current_child_index + 1],
+                        );
+                        pairwise_hash.proof().unwrap() // Adjust the error handling as needed
+                    })
+                    .collect()
+            } else {
+                let inner_proof_data: Vec<_> = (current_child_hash_index
+                    ..current_child_hash_index + chunk_size)
+                    .into_par_iter()
+                    .step_by(2)
+                    .zip(
+                        (proof_data_index..(proof_data_index + chunk_size))
+                            .into_par_iter()
+                            .step_by(2),
+                    )
+                    .map(|(current_child_index, proof_data_index)| {
+                        let left_recursive_hash = RecursiveHash::new(
+                            self.digests[current_child_index],
+                            &proof_datas[proof_data_index],
+                        );
+                        let right_recursive_hash = RecursiveHash::new(
+                            self.digests[current_child_index + 1],
+                            &proof_datas[proof_data_index + 1],
+                        );
+                        let recursive_pairwise_hash =
+                            RecursivePairwiseHash::new(left_recursive_hash, right_recursive_hash);
+
+                        recursive_pairwise_hash.proof().unwrap() // Adjust the error handling as needed
+                    })
+                    .collect();
+
+                proof_data_index += chunk_size;
+
+                inner_proof_data
+            };
+
+            proof_datas.extend(thread_proof_datas);
+            current_child_hash_index += chunk_size;
         }
 
         // The last step is to connect the root of the Merkle tree with the last digest
@@ -404,6 +453,13 @@ mod tests {
             vec![f_eight],
         ];
 
+        let merkle_tree = MerkleTree::create(merkle_tree_leaves.clone());
+        assert!(merkle_tree.prove_and_verify().is_ok());
+    }
+
+    #[test]
+    fn test_large_tree_proof_and_verification() {
+        let merkle_tree_leaves = vec![vec![F::ZERO]; 16_384];
         let merkle_tree = MerkleTree::create(merkle_tree_leaves.clone());
         assert!(merkle_tree.prove_and_verify().is_ok());
     }

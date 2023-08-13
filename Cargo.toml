@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.72"
 plonky2 = "0.1.4"
+rayon = "1.7.0"
