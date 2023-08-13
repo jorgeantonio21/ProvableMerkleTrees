@@ -22,8 +22,7 @@ pub struct HashData {
 }
 
 impl HashData {
-    pub(crate) fn new(data: Vec<F>) -> Self {
-        let hash = PoseidonHash::hash_or_noop(&data);
+    pub(crate) fn new(data: Vec<F>, hash: HashOut<F>) -> Self {
         Self { data, hash }
     }
 }
@@ -36,9 +35,14 @@ pub(crate) struct PairwiseHash {
 }
 
 impl PairwiseHash {
-    pub fn new(left_child_data: Vec<F>, right_child_data: Vec<F>) -> Self {
-        let left_child = HashData::new(left_child_data);
-        let right_child = HashData::new(right_child_data);
+    pub fn new(
+        left_child_data: Vec<F>,
+        left_child_hash: HashOut<F>,
+        right_child_data: Vec<F>,
+        right_child_hash: HashOut<F>,
+    ) -> Self {
+        let left_child = HashData::new(left_child_data, left_child_hash);
+        let right_child = HashData::new(right_child_data, right_child_hash);
         let parent_hash = PoseidonHash::hash_or_noop(
             &[left_child.hash.elements, right_child.hash.elements].concat(),
         );
@@ -167,7 +171,10 @@ mod tests {
         let f_0 = F::ZERO;
         let f_1 = F::ONE;
 
-        let pairwise_hash = PairwiseHash::new(vec![f_0], vec![f_1]);
+        let f_0_hash = PoseidonHash::hash_or_noop(&[f_0]);
+        let f_1_hash = PoseidonHash::hash_or_noop(&[f_1]);
+
+        let pairwise_hash = PairwiseHash::new(vec![f_0], f_0_hash, vec![f_1], f_1_hash);
         assert!(pairwise_hash.prove_and_verify().is_ok());
     }
 
@@ -176,7 +183,10 @@ mod tests {
         let f_0 = F::ZERO;
         let f_1 = F::ONE;
 
-        let pairwise_hash = PairwiseHash::new(vec![f_0], vec![f_1]);
+        let f_0_hash = PoseidonHash::hash_or_noop(&[f_0]);
+        let f_1_hash = PoseidonHash::hash_or_noop(&[f_1]);
+
+        let pairwise_hash = PairwiseHash::new(vec![f_0], f_0_hash, vec![f_1], f_1_hash);
         assert_eq!(
             pairwise_hash.parent_hash,
             PoseidonHash::hash_or_noop(

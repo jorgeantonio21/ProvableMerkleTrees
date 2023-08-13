@@ -18,25 +18,28 @@ use crate::{
     C, D, F,
 };
 
-pub struct RecursiveHash {
+pub struct RecursiveHash<'a> {
     pub(crate) hash: HashOut<F>,
-    pub(crate) proof_data: ProofData<F, C, D>,
+    pub(crate) proof_data: &'a ProofData<F, C, D>,
 }
 
-impl RecursiveHash {
-    pub fn new(hash: HashOut<F>, proof_data: ProofData<F, C, D>) -> Self {
+impl<'a> RecursiveHash<'a> {
+    pub fn new(hash: HashOut<F>, proof_data: &'a ProofData<F, C, D>) -> Self {
         Self { hash, proof_data }
     }
 }
 
-pub struct RecursivePairwiseHash {
-    pub(crate) left_recursive_hash: RecursiveHash,
-    pub(crate) right_recursive_hash: RecursiveHash,
+pub struct RecursivePairwiseHash<'a> {
+    pub(crate) left_recursive_hash: RecursiveHash<'a>,
+    pub(crate) right_recursive_hash: RecursiveHash<'a>,
     pub(crate) parent_hash: HashOut<F>,
 }
 
-impl RecursivePairwiseHash {
-    pub fn new(left_recursive_hash: RecursiveHash, right_recursive_hash: RecursiveHash) -> Self {
+impl<'a> RecursivePairwiseHash<'a> {
+    pub fn new(
+        left_recursive_hash: RecursiveHash<'a>,
+        right_recursive_hash: RecursiveHash<'a>,
+    ) -> Self {
         let parent_hash = PoseidonHash::hash_or_noop(
             &[
                 left_recursive_hash.hash.elements,
@@ -52,7 +55,7 @@ impl RecursivePairwiseHash {
     }
 }
 
-impl CircuitCompiler<F, D> for RecursivePairwiseHash {
+impl<'a> CircuitCompiler<F, D> for RecursivePairwiseHash<'a> {
     type Value = HashOut<F>;
     type Targets = (
         HashOutTarget,
@@ -195,7 +198,7 @@ impl CircuitCompiler<F, D> for RecursivePairwiseHash {
     }
 }
 
-impl Provable<F, C, D> for RecursivePairwiseHash {
+impl<'a> Provable<F, C, D> for RecursivePairwiseHash<'a> {
     fn proof(self) -> Result<ProofData<F, C, D>, anyhow::Error> {
         let config = CircuitConfig::standard_recursion_config();
         let mut circuit_builder = CircuitBuilder::new(config);
@@ -243,7 +246,7 @@ mod tests {
             proof_with_pis,
         };
 
-        let left_recursive_hash = RecursiveHash::new(left_hash, left_proof_data);
+        let left_recursive_hash = RecursiveHash::new(left_hash, &left_proof_data);
 
         let mut circuit_builder =
             CircuitBuilder::<F, D>::new(CircuitConfig::standard_recursion_config());
@@ -263,7 +266,7 @@ mod tests {
             proof_with_pis,
         };
 
-        let right_recursive_hash = RecursiveHash::new(right_hash, right_proof_data);
+        let right_recursive_hash = RecursiveHash::new(right_hash, &right_proof_data);
 
         let recursive_pairwise_hash =
             RecursivePairwiseHash::new(left_recursive_hash, right_recursive_hash);
@@ -295,7 +298,7 @@ mod tests {
             proof_with_pis,
         };
 
-        let left_recursive_hash = RecursiveHash::new(left_hash, left_proof_data);
+        let left_recursive_hash = RecursiveHash::new(left_hash, &left_proof_data);
 
         let mut circuit_builder =
             CircuitBuilder::<F, D>::new(CircuitConfig::standard_recursion_config());
@@ -315,7 +318,7 @@ mod tests {
             proof_with_pis,
         };
 
-        let right_recursive_hash = RecursiveHash::new(right_hash, right_proof_data);
+        let right_recursive_hash = RecursiveHash::new(right_hash, &right_proof_data);
 
         let mut recursive_pairwise_hash =
             RecursivePairwiseHash::new(left_recursive_hash, right_recursive_hash);
