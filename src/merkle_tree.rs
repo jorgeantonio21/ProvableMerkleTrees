@@ -68,38 +68,6 @@ impl Provable<F, C, D> for MerkleTree {
         let mut proof_datas = vec![];
         let mut current_child_hash_index = 0;
         let mut proof_data_index = 0;
-        // for height in 0..merkle_tree_height {
-        //     while current_child_hash_index
-        //         < current_tree_height_index + (1 << (merkle_tree_height - height))
-        //     {
-        //         if height == 0 {
-        //             let pairwise_hash = PairwiseHash::new(
-        //                 self.leaves[current_child_hash_index].clone(),
-        //                 self.digests[current_child_hash_index],
-        //                 self.leaves[current_child_hash_index + 1].clone(),
-        //                 self.digests[current_child_hash_index + 1],
-        //             );
-        //             let proof_data = pairwise_hash.proof()?;
-        //             proof_datas.push(proof_data);
-        //         } else {
-        //             let left_recursive_hash = RecursiveHash::new(
-        //                 self.digests[current_child_hash_index],
-        //                 &proof_datas[proof_data_index],
-        //             );
-        //             let right_recursive_hash = RecursiveHash::new(
-        //                 self.digests[current_child_hash_index + 1],
-        //                 &proof_datas[proof_data_index + 1],
-        //             );
-        //             let recursive_pairwise_hash =
-        //                 RecursivePairwiseHash::new(left_recursive_hash, right_recursive_hash);
-        //             let proof_data = recursive_pairwise_hash.proof()?;
-        //             proof_datas.push(proof_data);
-        //             proof_data_index += 2;
-        //         }
-        //         current_child_hash_index += 2;
-        //     }
-        //     current_tree_height_index += 1 << (merkle_tree_height - height);
-        // }
 
         // Parallelize the loop using rayon
         for height in 0..(merkle_tree_height) {
