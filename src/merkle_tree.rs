@@ -72,6 +72,10 @@ impl Provable<F, C, D> for MerkleTree {
             while current_child_hash_index
                 < current_tree_height_index + (1 << (merkle_tree_height - height))
             {
+                println!(
+                    "FLAG: DEBUG current_child_hash_index = {}, proof_data_index = {}",
+                    current_child_hash_index, proof_data_index
+                );
                 if height == 0 {
                     let pairwise_hash = PairwiseHash::new(
                         self.leaves[current_child_hash_index].clone(),
@@ -94,7 +98,7 @@ impl Provable<F, C, D> for MerkleTree {
                         RecursivePairwiseHash::new(left_recursive_hash, right_recursive_hash);
                     let proof_data = recursive_pairwise_hash.proof()?;
                     proof_datas.push(proof_data);
-                    proof_data_index += 1;
+                    proof_data_index += 2;
                 }
                 current_child_hash_index += 2;
             }
@@ -298,6 +302,32 @@ mod tests {
 
     #[test]
     fn test_bigger_merkle_tree_proof_generation() {
+        let f_one: F = F::ONE;
+        let f_two: F = F::from_canonical_u64(2);
+        let f_three: F = F::from_canonical_u64(3);
+        let f_four: F = F::from_canonical_u64(4);
+        let f_five: F = F::from_canonical_u64(5);
+        let f_six: F = F::from_canonical_u64(6);
+        let f_seven: F = F::from_canonical_u64(7);
+        let f_eight: F = F::from_canonical_u64(8);
+
+        let merkle_tree_leaves = vec![
+            vec![f_one],
+            vec![f_two],
+            vec![f_three],
+            vec![f_four],
+            vec![f_five],
+            vec![f_six],
+            vec![f_seven],
+            vec![f_eight],
+        ];
+
+        let merkle_tree = MerkleTree::create(merkle_tree_leaves.clone());
+        assert!(merkle_tree.prove_and_verify().is_ok());
+    }
+
+    #[test]
+    fn test_bigger_merkle_tree_proof_generation_2() {
         let f_one: F = F::ONE;
         let f_two: F = F::from_canonical_u64(2);
         let f_three: F = F::from_canonical_u64(3);
