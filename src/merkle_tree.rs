@@ -64,6 +64,21 @@ impl MerkleTree {
 
 impl Provable<F, C, D> for MerkleTree {
     fn proof(self) -> Result<ProofData<F, C, D>, Error> {
+        // Connect the root of the Merkle tree with the last digest. This is not strictly necessary, but we include it for completeness
+        let mut circuit_builder = CircuitBuilder::new(CircuitConfig::standard_recursion_config());
+        let mut partial_witness = PartialWitness::<F>::new();
+
+        let root_hash_targets = circuit_builder.add_virtual_hash();
+        let last_digest_hash_targets = circuit_builder.add_virtual_hash();
+        circuit_builder.connect_hashes(root_hash_targets, last_digest_hash_targets);
+
+        partial_witness.set_hash_target(root_hash_targets, self.root);
+        partial_witness.set_hash_target(last_digest_hash_targets, *self.digests.last().unwrap());
+
+        let circuit_data = circuit_builder.build::<C>();
+        let _ = circuit_data.prove(partial_witness)?;
+
+        // Recursive proof generation
         let merkle_tree_height = self.leaves.len().ilog2() as usize;
         let mut proof_datas = vec![];
         let mut current_child_hash_index = 0;
@@ -122,24 +137,9 @@ impl Provable<F, C, D> for MerkleTree {
             current_child_hash_index += chunk_size;
         }
 
-        // The last step is to connect the root of the Merkle tree with the last digest
-        let mut circuit_builder = CircuitBuilder::new(CircuitConfig::standard_recursion_config());
-        let mut partial_witness = PartialWitness::<F>::new();
+        let root_proof_data = proof_datas.pop().expect("Failed to get last proof data");
 
-        let root_hash_targets = circuit_builder.add_virtual_hash();
-        let last_digest_hash_targets = circuit_builder.add_virtual_hash();
-        circuit_builder.connect_hashes(root_hash_targets, last_digest_hash_targets);
-
-        partial_witness.set_hash_target(root_hash_targets, self.root);
-        partial_witness.set_hash_target(last_digest_hash_targets, *self.digests.last().unwrap());
-
-        let circuit_data = circuit_builder.build::<C>();
-        let proof_with_pis = circuit_data.prove(partial_witness)?;
-
-        Ok(ProofData {
-            proof_with_pis,
-            circuit_data,
-        })
+        Ok(root_proof_data)
     }
 }
 
