@@ -69,7 +69,7 @@ impl Provable<F, C, D> for MerkleTree {
         let mut current_child_hash_index = 0;
         let mut proof_data_index = 0;
 
-        // Parallelize the loop using rayon
+        // Parallelize the inner loop using rayon
         for height in 0..(merkle_tree_height) {
             let chunk_size = 1 << (merkle_tree_height - height);
 
@@ -84,9 +84,9 @@ impl Provable<F, C, D> for MerkleTree {
                             self.leaves[current_child_index + 1].clone(),
                             self.digests[current_child_index + 1],
                         );
-                        pairwise_hash.proof().unwrap() // Adjust the error handling as needed
+                        pairwise_hash.proof()
                     })
-                    .collect()
+                    .collect::<Result<Vec<_>, _>>()?
             } else {
                 let inner_proof_data: Vec<_> = (current_child_hash_index
                     ..current_child_hash_index + chunk_size)
@@ -109,9 +109,9 @@ impl Provable<F, C, D> for MerkleTree {
                         let recursive_pairwise_hash =
                             RecursivePairwiseHash::new(left_recursive_hash, right_recursive_hash);
 
-                        recursive_pairwise_hash.proof().unwrap() // Adjust the error handling as needed
+                        recursive_pairwise_hash.proof() // Adjust the error handling as needed
                     })
-                    .collect();
+                    .collect::<Result<Vec<_>, _>>()?;
 
                 proof_data_index += chunk_size;
 
