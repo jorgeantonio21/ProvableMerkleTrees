@@ -18,17 +18,46 @@ use crate::{
     C, D, F,
 };
 
+/// `RecursiveHash`
+///
+///     A structure representing a hash operation within a recursive context.
+///
+/// Fields:
+///
+///     hash: A HashOut<F> representing the hash value.
+///     proof_data: A reference to ProofData<F, C, D> containing proof-related data.
 pub struct RecursiveHash<'a> {
     pub(crate) hash: HashOut<F>,
     pub(crate) proof_data: &'a ProofData<F, C, D>,
 }
 
 impl<'a> RecursiveHash<'a> {
+    /// Method `new`:
+    ///
+    ///     Creates a new instance of RecursiveHash.
+    ///
+    /// Arguments:
+    ///
+    ///     hash: A HashOut<F> representing the hash value.
+    ///     proof_data: A reference to ProofData<F, C, D> containing proof-related data.
+    ///
+    /// Returns:
+    ///
+    ///     Returns a RecursiveHash instance with the provided hash and proof data.
     pub fn new(hash: HashOut<F>, proof_data: &'a ProofData<F, C, D>) -> Self {
         Self { hash, proof_data }
     }
 }
 
+/// `RecursivePairwiseHash`
+///
+///     A structure representing a recursive pairwise hash operation between two child RecursiveHash instances and their parent hash.
+///
+/// Fields:
+///
+///     left_recursive_hash: A RecursiveHash instance representing the left child.
+///     right_recursive_hash: A RecursiveHash instance representing the right child.
+///     parent_hash: A HashOut<F> representing the hash value of the parent.
 pub struct RecursivePairwiseHash<'a> {
     pub(crate) left_recursive_hash: RecursiveHash<'a>,
     pub(crate) right_recursive_hash: RecursiveHash<'a>,
@@ -36,6 +65,18 @@ pub struct RecursivePairwiseHash<'a> {
 }
 
 impl<'a> RecursivePairwiseHash<'a> {
+    /// Method `new`:
+    ///
+    ///     Creates a new instance of RecursivePairwiseHash.
+    ///
+    /// Arguments:
+    ///
+    ///     left_recursive_hash: A RecursiveHash instance representing the left child.
+    ///     right_recursive_hash: A RecursiveHash instance representing the right child.
+    ///
+    /// Returns:
+    ///
+    ///     Returns a RecursivePairwiseHash instance with the provided child hash instances.
     pub fn new(
         left_recursive_hash: RecursiveHash<'a>,
         right_recursive_hash: RecursiveHash<'a>,
@@ -67,10 +108,24 @@ impl<'a> CircuitCompiler<F, D> for RecursivePairwiseHash<'a> {
     );
     type OutTargets = HashOutTarget;
 
+    /// `CircuitCompiler` trait method `evaluate`:
+    ///
+    ///     Evaluates the recursive pairwise hash operation and returns the resulting HashOut<F>.
     fn evaluate(&self) -> Self::Value {
         self.parent_hash
     }
 
+    /// `CircuitCompiler` trait method `compile`:
+    ///
+    ///     Compiles the circuit for the recursive pairwise hash operation.
+    ///
+    /// Arguments:
+    ///
+    ///     circuit_builder: A mutable reference to a CircuitBuilder<F, D> instance.
+    ///
+    /// Returns:
+    ///
+    ///     Returns a tuple containing targets for input data and hashes, and targets for the output hash.
     fn compile(
         &self,
         circuit_builder: &mut CircuitBuilder<F, D>,
@@ -149,6 +204,19 @@ impl<'a> CircuitCompiler<F, D> for RecursivePairwiseHash<'a> {
         )
     }
 
+    /// `CircuitCompiler` trait method `fill`:
+    ///
+    ///     Fills the partial witness with data for the compiled circuit.
+    ///
+    /// Arguments:
+    ///
+    ///     partial_witness: A mutable reference to a PartialWitness<F> instance.
+    ///     targets: A tuple containing targets for input data and hashes.
+    ///     out_targets: Targets for the output hash.
+    ///
+    /// Returns:
+    ///
+    ///     Returns a Result indicating success or an error.
     fn fill(
         &self,
         partial_witness: &mut PartialWitness<F>,
@@ -199,6 +267,13 @@ impl<'a> CircuitCompiler<F, D> for RecursivePairwiseHash<'a> {
 }
 
 impl<'a> Provable<F, C, D> for RecursivePairwiseHash<'a> {
+    /// `Provable` trait method `proof`:
+    ///
+    ///     Generates a proof for the recursive pairwise hash operation.
+    ///
+    /// Returns:
+    ///
+    ///     Returns a Result containing the generated ProofData or an Error if the proof generation fails.
     fn proof(self) -> Result<ProofData<F, C, D>, anyhow::Error> {
         let config = CircuitConfig::standard_recursion_config();
         let mut circuit_builder = CircuitBuilder::new(config);

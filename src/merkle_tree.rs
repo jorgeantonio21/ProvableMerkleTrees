@@ -22,25 +22,27 @@ pub struct MerkleTree {
 }
 
 impl MerkleTree {
-    /// Creates a new instance of the MerkleTree struct.
+    /// Method `new`:
+    ///
+    ///     Creates a new instance of the MerkleTree struct.
     ///
     /// Arguments:
     ///
-    /// data: A vector containing vectors of elements of `Goldilocks` field type. Each inner vector represents the data for a leaf node of the Merkle tree.
+    ///     data: A vector containing vectors of elements of `Goldilocks` field type. Each inner vector represents the data for a leaf node of the Merkle tree.
     ///
     /// Returns:
     ///
-    /// Returns a MerkleTree instance representing the constructed Merkle tree.
+    ///     Returns a MerkleTree instance representing the constructed Merkle tree.
     ///
     /// Panics:
     ///
-    /// Panics if the length of data is not a power of two or is less than 2.
+    ///     Panics if the length of data is not a power of two or is less than 2.
     ///
     /// Description:
     ///
-    /// This method constructs a Merkle tree based on the input data. The number of leaves in the tree should be a power of two.
-    /// It iterates over the provided data to compute the hashes of the leaf nodes using the PoseidonHash::hash_or_noop function.
-    /// Then, it iterates over the heights of the tree, combining pairs of digests to compute intermediate hash nodes until the root hash is computed.
+    ///     This method constructs a Merkle tree based on the input data. The number of leaves in the tree should be a power of two.
+    ///     It iterates over the provided data to compute the hashes of the leaf nodes using the PoseidonHash::hash_or_noop function.
+    ///     Then, it iterates over the heights of the tree, combining pairs of digests to compute intermediate hash nodes until the root hash is computed.
     pub fn create(data: Vec<Vec<F>>) -> Self {
         // A plain Merkle tree needs to have a power of two number of leaves.
         debug_assert!(data.len().is_power_of_two() && data.len() > 1);
@@ -82,21 +84,25 @@ impl MerkleTree {
 }
 
 impl Provable<F, C, D> for MerkleTree {
-    /// Generates a proof for the constructed Merkle tree.
+    /// `Provable` trait method:
+    ///  
+    ///     Generates a proof for the constructed Merkle tree.
     ///
     /// Returns:
     ///
-    /// Returns a Result containing the generated ProofData or an Error if the proof generation fails.
+    ///     Returns a Result containing the generated ProofData or an Error if the proof generation fails.
+    ///
     /// Description:
-    /// This method generates a proof for the constructed Merkle tree. It first establishes a connection between the root hash of the Merkle tree and
-    /// the hash of the last digest using a CircuitBuilder. It then constructs a PartialWitness containing hash targets for the root and last digest hashes.
-    /// The CircuitBuilder is used to create a circuit configuration, and the proof is generated using the provided circuit_data and partial_witness using the prove method.
     ///
-    /// The method then proceeds with recursive proof generation for the tree. It calculates the height of the tree and iterates over the heights in parallel using the rayon library.
-    /// For each height, it computes proof data for pairs of child hashes. If the current height is 0, it generates pairwise proofs using PairwiseHash instances.
-    /// Otherwise, it generates proofs using RecursiveHash and RecursivePairwiseHash instances based on previously generated proof data.
+    ///     This method generates a proof for the constructed Merkle tree. It first establishes a connection between the root hash of the Merkle tree and
+    ///     the hash of the last digest using a CircuitBuilder. It then constructs a PartialWitness containing hash targets for the root and last digest hashes.
+    ///     The CircuitBuilder is used to create a circuit configuration, and the proof is generated using the provided circuit_data and partial_witness using the prove method.
     ///
-    /// The final root proof data is returned as the result.
+    ///     The method then proceeds with recursive proof generation for the tree. It calculates the height of the tree and iterates over the heights in parallel using the rayon library.
+    ///     For each height, it computes proof data for pairs of child hashes. If the current height is 0, it generates pairwise proofs using PairwiseHash instances.
+    ///     Otherwise, it generates proofs using RecursiveHash and RecursivePairwiseHash instances based on previously generated proof data.
+    ///
+    ///     The final root proof data is returned as the result.
     fn proof(self) -> Result<ProofData<F, C, D>, Error> {
         // Connect the root of the Merkle tree with the last digest. This is not strictly necessary, but we include it for completeness
         let mut circuit_builder = CircuitBuilder::new(CircuitConfig::standard_recursion_config());
