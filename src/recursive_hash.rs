@@ -7,7 +7,7 @@ use plonky2::{
     plonk::{
         circuit_builder::CircuitBuilder,
         circuit_data::{CircuitConfig, VerifierCircuitTarget},
-        config::Hasher,
+        config::{Hasher, PoseidonGoldilocksConfig},
         proof::ProofWithPublicInputsTarget,
     },
 };
@@ -155,6 +155,12 @@ impl<'a> CircuitCompiler<F, D> for RecursivePairwiseHash<'a> {
                 .cap_height,
         );
 
+        circuit_builder.verify_proof::<PoseidonGoldilocksConfig>(
+            &left_proof_with_pis_targets,
+            &left_verifier_data_targets,
+            &self.left_recursive_hash.proof_data.circuit_data.common,
+        );
+
         let right_proof_with_pis_targets = circuit_builder
             .add_virtual_proof_with_pis(&self.right_recursive_hash.proof_data.circuit_data.common);
         let right_verifier_data_targets = circuit_builder.add_virtual_verifier_data(
@@ -165,6 +171,12 @@ impl<'a> CircuitCompiler<F, D> for RecursivePairwiseHash<'a> {
                 .config
                 .fri_config
                 .cap_height,
+        );
+
+        circuit_builder.verify_proof::<PoseidonGoldilocksConfig>(
+            &right_proof_with_pis_targets,
+            &right_verifier_data_targets,
+            &self.right_recursive_hash.proof_data.circuit_data.common,
         );
 
         // we need to enforce that the public inputs of `proof_with_pis_targets` do agree
