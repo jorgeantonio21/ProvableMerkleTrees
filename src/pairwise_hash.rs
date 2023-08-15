@@ -16,18 +16,43 @@ use crate::{
 };
 
 #[derive(Clone, Debug)]
+/// HashData
+/// A structure representing hashed data along with its original content.
+
+/// Fields:
+
+/// data: A vector containing elements of type F representing the original data.
+/// hash: A HashOut<F> representing the hash value of the data.
 pub struct HashData {
     pub(crate) data: Vec<F>,
     pub(crate) hash: HashOut<F>,
 }
 
 impl HashData {
+    /// Creates a new instance of HashData.
+    ///
+    /// Arguments:
+    ///
+    /// data: A vector containing elements of type F representing the original data.
+    /// hash: A HashOut<F> representing the hash value of the data.
+    ///
+    /// Returns:
+    ///
+    /// Returns a HashData instance with the provided data and hash.
     pub(crate) fn new(data: Vec<F>, hash: HashOut<F>) -> Self {
         Self { data, hash }
     }
 }
 
 #[derive(Clone, Debug)]
+/// `PairwiseHash`
+/// A structure representing a pairwise hash operation between two child nodes and their parent hash.
+///
+/// Fields:
+///
+/// left_child: A HashData instance representing the left child.
+/// right_child: A HashData instance representing the right child.
+/// parent_hash: A HashOut<F> representing the hash value of the parent.
 pub(crate) struct PairwiseHash {
     pub(crate) left_child: HashData,
     pub(crate) right_child: HashData,
@@ -35,6 +60,18 @@ pub(crate) struct PairwiseHash {
 }
 
 impl PairwiseHash {
+    /// Creates a new instance of PairwiseHash.
+    ///
+    /// Arguments:
+    ///
+    /// left_child_data: A vector containing elements of type F representing the data of the left child.
+    /// left_child_hash: A HashOut<F> representing the hash value of the left child.
+    /// right_child_data: A vector containing elements of type F representing the data of the right child.
+    /// right_child_hash: A HashOut<F> representing the hash value of the right child.
+    ///
+    /// Returns:
+    ///
+    /// Returns a PairwiseHash instance with the provided child data and hash values.
     pub fn new(
         left_child_data: Vec<F>,
         left_child_hash: HashOut<F>,
@@ -59,10 +96,19 @@ impl CircuitCompiler<F, D> for PairwiseHash {
     type Targets = (Vec<Target>, Vec<Target>, HashOutTarget, HashOutTarget);
     type OutTargets = HashOutTarget;
 
+    /// Evaluates the pairwise hash operation and returns the resulting HashOut<F>.
     fn evaluate(&self) -> Self::Value {
         self.parent_hash
     }
 
+    /// Compiles the circuit for the pairwise hash operation.
+    ///
+    /// Arguments:
+    ///
+    /// circuit_builder: A mutable reference to a CircuitBuilder<F, D> instance.
+    /// Returns:
+    ///
+    /// Returns a tuple containing targets for input data and hashes, and targets for the output hash.
     fn compile(
         &self,
         circuit_builder: &mut CircuitBuilder<F, D>,
@@ -103,6 +149,16 @@ impl CircuitCompiler<F, D> for PairwiseHash {
         )
     }
 
+    /// Fills the partial witness with data for the compiled circuit.
+    ///
+    /// Arguments:
+    ///
+    /// partial_witness: A mutable reference to a PartialWitness<F> instance.
+    /// targets: A tuple containing targets for input data and hashes.
+    /// out_targets: Targets for the output hash.
+    /// Returns:
+    ///
+    /// Returns a Result indicating success or an error.
     fn fill(
         &self,
         partial_witness: &mut PartialWitness<F>,
@@ -142,6 +198,11 @@ impl CircuitCompiler<F, D> for PairwiseHash {
 }
 
 impl Provable<F, C, D> for PairwiseHash {
+    /// Generates a proof for the pairwise hash operation.
+    ///
+    /// Returns:
+    ///
+    /// Returns a Result containing the generated ProofData or an Error if the proof generation fails.
     fn proof(self) -> Result<ProofData<F, C, D>, Error> {
         let config = CircuitConfig::standard_recursion_config();
         let mut circuit_builder = CircuitBuilder::new(config);
