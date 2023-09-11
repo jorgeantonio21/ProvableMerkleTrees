@@ -10,53 +10,24 @@ use plonky2::{
 };
 
 use crate::{
-    circuit_compiler::{CircuitCompiler, ProofData},
+    circuit_compiler::{CircuitCompiler, EvaluateFillCircuit, ProofData},
     provable::Provable,
     C, D, F,
 };
 
 #[derive(Clone, Debug)]
-/// `HashData`:
-///
-///     A structure representing hashed data along with its original content.
-///
-/// Fields:
-///
-///     data: A vector containing elements of type F representing the original data.
-///     hash: A HashOut<F> representing the hash value of the data.
 pub struct HashData {
     pub(crate) data: Vec<F>,
     pub(crate) hash: HashOut<F>,
 }
 
 impl HashData {
-    /// Method `new`:
-    ///
-    ///     Creates a new instance of HashData.
-    ///
-    /// Arguments:
-    ///
-    ///     data: A vector containing elements of type F representing the original data.
-    ///     hash: A HashOut<F> representing the hash value of the data.
-    ///
-    /// Returns:
-    ///
-    ///     Returns a HashData instance with the provided data and hash.
     pub(crate) fn new(data: Vec<F>, hash: HashOut<F>) -> Self {
         Self { data, hash }
     }
 }
 
 #[derive(Clone, Debug)]
-/// `PairwiseHash`:
-///
-///     A structure representing a pairwise hash operation between two child nodes and their parent hash.
-///
-/// Fields:
-///
-///     left_child: A HashData instance representing the left child.
-///     right_child: A HashData instance representing the right child.
-///     parent_hash: A HashOut<F> representing the hash value of the parent.
 pub(crate) struct PairwiseHash {
     pub(crate) left_child: HashData,
     pub(crate) right_child: HashData,
@@ -64,20 +35,6 @@ pub(crate) struct PairwiseHash {
 }
 
 impl PairwiseHash {
-    /// Method `new`:
-    ///
-    ///     Creates a new instance of PairwiseHash.
-    ///
-    /// Arguments:
-    ///
-    ///     left_child_data: A vector containing elements of type F representing the data of the left child.
-    ///     left_child_hash: A HashOut<F> representing the hash value of the left child.
-    ///     right_child_data: A vector containing elements of type F representing the data of the right child.
-    ///     right_child_hash: A HashOut<F> representing the hash value of the right child.
-    ///
-    /// Returns:
-    ///
-    ///     Returns a PairwiseHash instance with the provided child data and hash values.
     pub fn new(
         left_child_data: Vec<F>,
         left_child_hash: HashOut<F>,
@@ -97,33 +54,13 @@ impl PairwiseHash {
     }
 }
 
-impl CircuitCompiler<F, D> for PairwiseHash {
-    type Value = HashOut<F>;
+impl CircuitCompiler<C, F, D> for PairwiseHash {
     type Targets = (Vec<Target>, Vec<Target>, HashOutTarget, HashOutTarget);
     type OutTargets = HashOutTarget;
 
-    /// `CircuitCompiler` trait method `evaluate`:
-    ///  
-    ///     Evaluates the pairwise hash operation and returns the resulting HashOut<F>.
-    fn evaluate(&self) -> Self::Value {
-        self.parent_hash
-    }
-
-    /// `CircuitCompiler` trait method `compile`:
-    ///
-    ///     Compiles the circuit for the pairwise hash operation.
-    ///
-    /// Arguments:
-    ///
-    ///     circuit_builder: A mutable reference to a CircuitBuilder<F, D> instance.
-    ///
-    /// Returns:
-    ///
-    ///     Returns a tuple containing targets for input data and hashes, and targets for the output hash.
-    fn compile(
-        &self,
-        circuit_builder: &mut CircuitBuilder<F, D>,
-    ) -> (Self::Targets, Self::OutTargets) {
+    fn compile(&self) -> (CircuitBuilder<F, D>, Self::Targets, Self::OutTargets) {
+        let mut circuit_builder =
+            CircuitBuilder::<F, D>::new(CircuitConfig::standard_recursion_zk_config());
         let left_data_targets = circuit_builder.add_virtual_targets(self.left_child.data.len());
         let right_data_targets = circuit_builder.add_virtual_targets(self.right_child.data.len());
 
@@ -150,6 +87,7 @@ impl CircuitCompiler<F, D> for PairwiseHash {
         circuit_builder.connect_hashes(should_be_parent_hash_targets, parent_hash_targets);
 
         (
+            circuit_builder,
             (
                 left_data_targets,
                 right_data_targets,
@@ -159,26 +97,22 @@ impl CircuitCompiler<F, D> for PairwiseHash {
             parent_hash_targets,
         )
     }
+}
 
-    /// `CircuitCompiler` trait method `fill`:
-    ///
-    ///     Fills the partial witness with data for the compiled circuit.
-    ///
-    /// Arguments:
-    ///
-    ///     partial_witness: A mutable reference to a PartialWitness<F> instance.
-    ///     targets: A tuple containing targets for input data and hashes.
-    ///     out_targets: Targets for the output hash.
-    ///
-    /// Returns:
-    ///
-    ///     Returns a Result indicating success or an error.
+impl EvaluateFillCircuit<C, F, D> for PairwiseHash {
+    type Value = HashOut<F>;
+
+    fn evaluate(&self) -> Self::Value {
+        self.parent_hash
+    }
+
     fn fill(
         &self,
-        partial_witness: &mut PartialWitness<F>,
         targets: Self::Targets,
         out_targets: Self::OutTargets,
-    ) -> Result<(), anyhow::Error> {
+    ) -> Result<PartialWitness<F>, anyhow::Error> {
+        let mut partial_witness = PartialWitness::<F>::new();
+
         let left_data_targets = targets.0;
         let right_data_targets = targets.1;
         let left_hash_targets = targets.2;
@@ -207,27 +141,15 @@ impl CircuitCompiler<F, D> for PairwiseHash {
             );
         });
 
-        Ok(())
+        Ok(partial_witness)
     }
 }
 
 impl Provable<F, C, D> for PairwiseHash {
-    /// `Provable` trait method `proof`:
-    ///
-    ///     Generates a proof for the pairwise hash operation.
-    ///
-    /// Returns:
-    ///
-    ///     Returns a Result containing the generated ProofData or an Error if the proof generation fails.
     fn proof(self) -> Result<ProofData<F, C, D>, Error> {
-        let config = CircuitConfig::standard_recursion_config();
-        let mut circuit_builder = CircuitBuilder::new(config);
-        let mut partial_witness = PartialWitness::new();
+        let (circuit_data, targets, out_targets) = self.compile_and_build();
+        let partial_witness = self.fill(targets, out_targets)?;
 
-        let (targets, out_targets) = self.compile(&mut circuit_builder);
-        self.fill(&mut partial_witness, targets, out_targets)?;
-
-        let circuit_data = circuit_builder.build::<C>();
         let proof_with_pis = circuit_data.prove(partial_witness)?;
 
         Ok(ProofData {
